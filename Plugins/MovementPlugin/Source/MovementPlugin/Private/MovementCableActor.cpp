@@ -19,6 +19,7 @@ AMovementCableActor::AMovementCableActor()
 	CableComponents.Empty();
 
 	UCableComponent* Cable = CreateDefaultSubobject<UCableComponent>("Cable1");
+	Cable->NumSegments = 2;
 	Cable->EndLocation = { 0,0,0 };
 	CableComponents.Add(Cable);
 	Cable->SetupAttachment(SceneComponentHook);
@@ -105,6 +106,7 @@ void AMovementCableActor::NewCableComponent(FVector HitLocation)
 	RemoveCableComponent(true);
 	UCableComponent* Cable = NewObject<UCableComponent>(this, UCableComponent::StaticClass());
 	Cable->SetupAttachment(RootComponent);
+	Cable->NumSegments = 2;
 	Cable->RegisterComponent();
 
 	CableComponents.Add(Cable);
@@ -112,7 +114,7 @@ void AMovementCableActor::NewCableComponent(FVector HitLocation)
 	Cable->EndLocation = HitLocation - GetActorLocation();
 	FVector LastPoint = GetSecondLastPoint();
 	Cable->CableLength = FVector::Dist(LastPoint, HitLocation);
-	//Cable->NumSegments = 2;
+	
 
 	float LastCableLength = 0;
 
@@ -174,7 +176,7 @@ void AMovementCableActor::RemoveCableComponent(bool RemoveBeforeAdd)
 FVector AMovementCableActor::GetJumpUnitVector()
 {
 	FVector MainVector = UKismetMathLibrary::GetDirectionUnitVector(SceneComponentHand->GetComponentLocation(),GetLastPoint());
-	float MinDistance = 1000;
+	float MinDistance = 300;
 	float AngularJumpScalar = 1 - UKismetMathLibrary::Clamp(UKismetMathLibrary::Vector_Distance(SceneComponentHand->GetComponentLocation(), GetLastPoint()) / MinDistance, 0, 1);
 	FRotator RotatorBetweenCables = UKismetMathLibrary::FindLookAtRotation(MainVector, UKismetMathLibrary::GetDirectionUnitVector(GetLastPoint(), GetSecondLastPoint())) * -1;
 	FVector AngluarVector = RotatorBetweenCables.RotateVector(MainVector);
