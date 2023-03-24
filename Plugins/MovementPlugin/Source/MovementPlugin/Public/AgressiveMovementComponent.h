@@ -162,10 +162,10 @@ public:
 	UFUNCTION()
 	FVector GetMoveToWallVector();
 
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable)
 	void StartRunOnWall();
 
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable)
 	void EndRunOnWall();
 
 	UFUNCTION()

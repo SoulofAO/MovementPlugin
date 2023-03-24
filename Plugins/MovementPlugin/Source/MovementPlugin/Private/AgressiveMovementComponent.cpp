@@ -126,7 +126,7 @@ void UAgressiveMovementComponent::TraceForWalkChannel()
 	TArray<FHitResult> HitResults;
 	FVector TraceEnd = GetOwner()->GetActorLocation();
 	TraceEnd = { TraceEnd.X, TraceEnd.Y,TraceEnd.Z - 10 };
-	UKismetSystemLibrary::SphereTraceMulti(this, GetOwner()->GetActorLocation(), TraceEnd, GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+10, ETraceTypeQuery::TraceTypeQuery1, false, IgnoredActors, EDrawDebugTrace::ForOneFrame, HitResults, true);
+	UKismetSystemLibrary::SphereTraceMulti(this, GetOwner()->GetActorLocation(), TraceEnd, GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+10, ETraceTypeQuery::TraceTypeQuery1, false, IgnoredActors, EDrawDebugTrace::None, HitResults, true);
 	WallTraceHitResults = HitResults;
 }
 FVector UAgressiveMovementComponent::GetJumpFromWallVector()
@@ -137,7 +137,6 @@ FVector UAgressiveMovementComponent::GetJumpFromWallVector()
 		for (FHitResult HitResult : WallTraceHitResults)
 		{
 			JumpVector = JumpVector + UKismetMathLibrary::GetDirectionUnitVector(HitResult.ImpactPoint,GetCharacterOwner()->GetActorLocation()) * (1-(UKismetMathLibrary::Vector_Distance(HitResult.ImpactPoint, GetCharacterOwner()->GetActorLocation())/ (GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 10)));
-			GEngine->AddOnScreenDebugMessage(-1,10, FColor::Red, JumpVector.ToString());
 		}
   		JumpVector = JumpVector + AppendVectorJumpFromWall;
 		UKismetMathLibrary::Vector_Normalize(JumpVector);
