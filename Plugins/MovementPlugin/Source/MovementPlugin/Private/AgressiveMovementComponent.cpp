@@ -7,12 +7,15 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
+#include "FloatModificatorContextV1.h"
 
 UAgressiveMovementComponent::UAgressiveMovementComponent()
 {
 	DefaultMaxWalkSpeed = MaxWalkSpeed;
 	DefaultWalkFriction = GroundFriction;
-	SpeedModificator = NewObject<UFloatModificatorContext>(this);
+	SpeedModificator = NewObject<UFloatModificatorContext>(this, "SpeedModificator");
+	EndTimeMoveOnWallDelegate.BindUFunction(this, "TimerWallEnd");
+	RestoreMoveOnWallDelegate.BindUFunction(this, "TimerWallRestore");
 }
 
 void UAgressiveMovementComponent::StartRun()
@@ -140,13 +143,13 @@ FVector UAgressiveMovementComponent::GetJumpFromWallVector()
 	UKismetMathLibrary::Vector_Normalize(JumpVector);
 	return JumpVector;
 }
-void UAgressiveMovementComponent::Jump()
+void UAgressiveMovementComponent::JumpFromWall()
 {
 	if (!ReloadJumpTimeHandle.IsValid())
 	{
 		FVector JumpVector = GetJumpFromWallVector() * StrengthJumpFromWall;
 		Launch(Velocity + JumpVector);
-		GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, EndTimeMoveOnWallDelegate, TimeReloadJumpFromWall, false);
+		GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, TimeReloadJumpFromWall, false);
 	}
 }
 FVector UAgressiveMovementComponent::GetMoveToWallVector()
@@ -161,14 +164,39 @@ FVector UAgressiveMovementComponent::GetMoveToWallVector()
 void UAgressiveMovementComponent::StartRunOnWall()
 {
 	RunOnWall = true;
-	FTimerDelegate TimerDelegate;
-	GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, TimerDelegate, DefaultTimeRunOnWall, false);
-
+	if (MoveOnWallTimeHandle.IsValid())
+	{
+		float TimeRemaining = GetWorld()->GetTimerManager().GetTimerRemaining(MoveOnWallTimeHandle);
+		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, EndTimeMoveOnWallDelegate, DefaultTimeRunOnWall - TimeRemaining, false);
+	}
+	else
+	{
+		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, EndTimeMoveOnWallDelegate, DefaultTimeRunOnWall, false);
+	}
 }
 
 void UAgressiveMovementComponent::EndRunOnWall()
 {
 	RunOnWall = false;
+	if (MoveOnWallTimeHandle.IsValid())
+	{
+		float TimeElasped = GetWorld()->GetTimerManager().GetTimerElapsed(MoveOnWallTimeHandle);
+		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, RestoreMoveOnWallDelegate, TimeElasped, false);
+	}
+	else
+	{
+		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, RestoreMoveOnWallDelegate, DefaultTimeRunOnWall, false);
+	}
+}
+
+void UAgressiveMovementComponent::TimerWallEnd()
+{
+	EndRunOnWall();
+}
+
+void UAgressiveMovementComponent::TimerWallRestore()
+{
+	StartRunOnWall();
 }
 
 void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
@@ -198,6 +226,8 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 		Launch(Velocity + CruckVector);
 	}
 	MaxWalkSpeed = DefaultMaxWalkSpeed;
+	TraceForWalkChannel();
+	
 }
 
 void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
