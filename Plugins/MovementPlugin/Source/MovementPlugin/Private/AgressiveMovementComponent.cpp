@@ -126,7 +126,16 @@ void UAgressiveMovementComponent::TraceForWalkChannel()
 	TArray<FHitResult> HitResults;
 	FVector TraceEnd = GetOwner()->GetActorLocation();
 	TraceEnd = { TraceEnd.X, TraceEnd.Y,TraceEnd.Z - 10 };
-	UKismetSystemLibrary::SphereTraceMulti(this, GetOwner()->GetActorLocation(), TraceEnd, GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+10, ETraceTypeQuery::TraceTypeQuery1, false, IgnoredActors, EDrawDebugTrace::None, HitResults, true);
+
+	if (Debug)
+	{
+		UKismetSystemLibrary::SphereTraceMulti(this, GetOwner()->GetActorLocation(), TraceEnd, GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 10, ETraceTypeQuery::TraceTypeQuery1, false, IgnoredActors, EDrawDebugTrace::ForOneFrame, HitResults, true);
+	}
+	else
+	{
+		UKismetSystemLibrary::SphereTraceMulti(this, GetOwner()->GetActorLocation(), TraceEnd, GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 10, ETraceTypeQuery::TraceTypeQuery1, false, IgnoredActors, EDrawDebugTrace::None, HitResults, true);
+	}
+
 	WallTraceHitResults = HitResults;
 }
 FVector UAgressiveMovementComponent::GetJumpFromWallVector()
@@ -158,49 +167,107 @@ void UAgressiveMovementComponent::JumpFromWall()
 }
 FVector UAgressiveMovementComponent::GetMoveToWallVector()
 {
+	FHitResult OptimalWall;
+	float MinDistance = 10000;
 	if (WallTraceHitResults.Num() > 0)
 	{
-		
+		for (FHitResult HitResult : WallTraceHitResults)
+		{
+			FVector ImpactNormal = HitResult.ImpactNormal;
+			ImpactNormal.Normalize();
+			if (UKismetMathLibrary::Dot_VectorVector(ImpactNormal, { 0,0,1 }) > MinDotAngleToRunOnWall)
+			{
+				if (MinDistance > UKismetMathLibrary::Vector_Distance(GetCharacterOwner()->GetActorLocation(), HitResult.ImpactPoint))
+				{
+					OptimalWall = HitResult;
+					MinDistance = UKismetMathLibrary::Vector_Distance(GetCharacterOwner()->GetActorLocation(), HitResult.ImpactPoint);
+				}
+			};
+		}
 	}
-	return {0,0,0};
+	FVector ForwardVector = GetCharacterOwner()->GetActorForwardVector();
+	FRotator Rotator = UKismetMathLibrary::NormalizedDeltaRotator(UKismetMathLibrary::Conv_VectorToRotator(ForwardVector), UKismetMathLibrary::Conv_VectorToRotator(OptimalWall.ImpactNormal));
+	if (Rotator.Yaw > 0)
+	{
+		return UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 });
+	}
+	else
+	{
+		return UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 })*-1;
+	}
+}
+
+void UAgressiveMovementComponent::MoveOnWallEvent()
+{
+	if (RunOnWall)
+	{
+		FVector LaunchVector = GetMoveToWallVector() * SpeedRunOnWall;
+		Launch(LaunchVector);
+		if (Debug)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Black, LaunchVector.ToString());
+		}
+	}
+}
+
+float UAgressiveMovementComponent::GetRunWallStamina()
+{
+	if (MoveOnWallTimeHandle.IsValid())
+	{
+		return GetWorld()->GetTimerManager().GetTimerRemaining(MoveOnWallTimeHandle);
+	}
+	if (RestoreMoveOnWallTimeHandle.IsValid())
+	{
+		return DefaultTimeRunOnWall - GetWorld()->GetTimerManager().GetTimerRemaining(RestoreMoveOnWallTimeHandle);
+	}
+	return DefaultTimeRunOnWall;
 }
 
 void UAgressiveMovementComponent::StartRunOnWall()
 {
-	RunOnWall = true;
-	if (MoveOnWallTimeHandle.IsValid())
+	if()
+	if (RunOnWall == false)
 	{
-		float TimeRemaining = GetWorld()->GetTimerManager().GetTimerRemaining(MoveOnWallTimeHandle);
-		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, EndTimeMoveOnWallDelegate, DefaultTimeRunOnWall - TimeRemaining, false);
-	}
-	else
-	{
-		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, EndTimeMoveOnWallDelegate, DefaultTimeRunOnWall, false);
+		RunOnWall = true;
+		GetWorld()->GetTimerManager().ClearTimer(MoveOnWallTimeHandle);
+		MoveOnWallTimeHandle.Invalidate();
+		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, EndTimeMoveOnWallDelegate, GetRunWallStamina(), false);
+		GetWorld()->GetTimerManager().ClearTimer(RestoreMoveOnWallTimeHandle);
+		RestoreMoveOnWallTimeHandle.Invalidate();
 	}
 }
 
 void UAgressiveMovementComponent::EndRunOnWall()
 {
-	RunOnWall = false;
-	if (MoveOnWallTimeHandle.IsValid())
+	if (RunOnWall == true)
 	{
-		float TimeElasped = GetWorld()->GetTimerManager().GetTimerElapsed(MoveOnWallTimeHandle);
-		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, RestoreMoveOnWallDelegate, TimeElasped, false);
-	}
-	else
-	{
-		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, RestoreMoveOnWallDelegate, DefaultTimeRunOnWall, false);
+		RunOnWall = false;
+		GetWorld()->GetTimerManager().ClearTimer(RestoreMoveOnWallTimeHandle);
+		RestoreMoveOnWallTimeHandle.Invalidate();
+		GetWorld()->GetTimerManager().SetTimer(RestoreMoveOnWallTimeHandle, RestoreMoveOnWallDelegate, DefaultTimeRunOnWall - GetRunWallStamina(), false);
+		GetWorld()->GetTimerManager().ClearTimer(MoveOnWallTimeHandle);
+		MoveOnWallTimeHandle.Invalidate();
 	}
 }
 
 void UAgressiveMovementComponent::TimerWallEnd()
 {
+	if (Debug)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Black, "TimerWallEnd");
+	}
+	JumpFromWall();
 	EndRunOnWall();
 }
 
 void UAgressiveMovementComponent::TimerWallRestore()
 {
-	StartRunOnWall();
+	if (Debug)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Black, "TimerWallRestore");
+	}
+	RestoreMoveOnWallTimeHandle.Invalidate();
+
 }
 
 void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
@@ -231,6 +298,7 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 	}
 	MaxWalkSpeed = DefaultMaxWalkSpeed;
 	TraceForWalkChannel();
+	MoveOnWallEvent();
 	
 }
 

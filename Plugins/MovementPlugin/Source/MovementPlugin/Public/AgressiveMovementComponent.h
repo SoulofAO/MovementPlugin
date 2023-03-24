@@ -30,6 +30,9 @@ class MOVEMENTPLUGIN_API UAgressiveMovementComponent : public UCharacterMovement
 	
 public:
 
+	UPROPERTY()
+	bool Debug = true;
+
 	//SpeedStart
 	UPROPERTY(BlueprintReadOnly)
 	float DefaultMaxWalkSpeed;
@@ -149,30 +152,46 @@ public:
 	UPROPERTY(BlueprintReadOnly)
 	bool RunOnWall;
 
-	UPROPERTY()
+	UPROPERTY(EditAnywhere,BlueprintReadOnly)
 	float DefaultTimeRunOnWall = 5;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float MinDotAngleToRunOnWall = -0.1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float SpeedRunOnWall = 600;
 
 	UPROPERTY()
 	FTimerHandle MoveOnWallTimeHandle;
+
+	UPROPERTY()
+	FTimerHandle RestoreMoveOnWallTimeHandle;
 
 	FTimerDelegate EndTimeMoveOnWallDelegate;
 
 	FTimerDelegate RestoreMoveOnWallDelegate;
 
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable)
 	FVector GetMoveToWallVector();
+
+	UFUNCTION()
+	void MoveOnWallEvent();
+
+	UFUNCTION(BlueprintCallable)
+	float GetRunWallStamina();
 
 	UFUNCTION(BlueprintCallable)
 	void StartRunOnWall();
 
 	UFUNCTION(BlueprintCallable)
 	void EndRunOnWall();
-
+protected:
 	UFUNCTION()
 	void TimerWallEnd();
 
 	UFUNCTION()
 	void TimerWallRestore();
+public:
 	//MoveOnWallEnd
 
 	//SprintMode
