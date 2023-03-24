@@ -126,30 +126,35 @@ void UAgressiveMovementComponent::TraceForWalkChannel()
 	TArray<FHitResult> HitResults;
 	FVector TraceEnd = GetOwner()->GetActorLocation();
 	TraceEnd = { TraceEnd.X, TraceEnd.Y,TraceEnd.Z - 10 };
-	UKismetSystemLibrary::SphereTraceMulti(this, GetOwner()->GetActorLocation(), TraceEnd, GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight(), ETraceTypeQuery::TraceTypeQuery1, false, IgnoredActors, EDrawDebugTrace::None, HitResults, true);
-	for (FHitResult HitResult : HitResults)
-	{
-	};
-	
+	UKismetSystemLibrary::SphereTraceMulti(this, GetOwner()->GetActorLocation(), TraceEnd, GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+10, ETraceTypeQuery::TraceTypeQuery1, false, IgnoredActors, EDrawDebugTrace::ForOneFrame, HitResults, true);
+	WallTraceHitResults = HitResults;
 }
 FVector UAgressiveMovementComponent::GetJumpFromWallVector()
 {
 	FVector JumpVector = {0,0,0};
-	for (FHitResult HitResult : WallTraceHitResults)
+	if (WallTraceHitResults.Num() > 0)
 	{
-		JumpVector = JumpVector + UKismetMathLibrary::GetDirectionUnitVector(GetCharacterOwner()->GetActorLocation(), HitResult.Location)*HitResult.Distance;
+		for (FHitResult HitResult : WallTraceHitResults)
+		{
+			JumpVector = JumpVector + UKismetMathLibrary::GetDirectionUnitVector(HitResult.ImpactPoint,GetCharacterOwner()->GetActorLocation()) * (1-(UKismetMathLibrary::Vector_Distance(HitResult.ImpactPoint, GetCharacterOwner()->GetActorLocation())/ (GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 10)));
+			GEngine->AddOnScreenDebugMessage(-1,10, FColor::Red, JumpVector.ToString());
+		}
+  		JumpVector = JumpVector + AppendVectorJumpFromWall;
+		UKismetMathLibrary::Vector_Normalize(JumpVector);
 	}
-	JumpVector = JumpVector + AppendVectorJumpFromWall;
-	UKismetMathLibrary::Vector_Normalize(JumpVector);
 	return JumpVector;
+}
+void UAgressiveMovementComponent::ReloadJump()
+{
+	ReloadJumpTimeHandle.Invalidate();
 }
 void UAgressiveMovementComponent::JumpFromWall()
 {
 	if (!ReloadJumpTimeHandle.IsValid())
 	{
-		FVector JumpVector = GetJumpFromWallVector() * StrengthJumpFromWall;
+ 		FVector JumpVector = GetJumpFromWallVector() * StrengthJumpFromWall;
 		Launch(Velocity + JumpVector);
-		GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, TimeReloadJumpFromWall, false);
+		GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, this, &UAgressiveMovementComponent::ReloadJump, TimeReloadJumpFromWall, false);
 	}
 }
 FVector UAgressiveMovementComponent::GetMoveToWallVector()
@@ -233,6 +238,7 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 {
 	Super::PhysWalking(deltaTime, Iterations);
+	TraceForWalkChannel();
 	FVector CruckVector = GetApplyCruck();
 	if (!CruckVector.IsNearlyZero())
 	{

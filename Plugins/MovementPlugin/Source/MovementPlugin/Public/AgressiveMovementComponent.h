@@ -37,7 +37,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float SpeedRunMultiply = 2;
 
-	UPROPERTY()
+	UPROPERTY(Transient)
     UFloatModificatorContext* SpeedModificator;
 
 	//RunStatus
@@ -123,6 +123,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	FVector GetJumpFromWallVector();
+
+	UFUNCTION(BlueprintCallable)
+	void ReloadJump();
 	
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float StrengthJumpFromWall = 600;
