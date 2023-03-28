@@ -6,13 +6,20 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "MovementCableActor.h"
 #include "FloatModificatorContextV1.h"
+#include "Camera/CameraShakeBase.h"
 #include "AgressiveMovementComponent.generated.h"
-
 /**
  * 
  */
 
-
+UENUM(Blueprintable)
+enum class EAgressiveMoveMode : uint8
+{
+	None,
+	Slide,
+	RunOnWall,
+	Run
+};
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FReadActorDestroyed, AActor, OnDestroyed, AActor*, DestroyedActor);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FEndTimeMoveOnWall);
@@ -33,6 +40,15 @@ public:
 	UPROPERTY()
 	bool Debug = true;
 
+	UPROPERTY(BlueprintReadOnly)
+	TArray<EAgressiveMoveMode> AgressiveMoveMode = { EAgressiveMoveMode::None };
+
+	UFUNCTION(BlueprintCallable)
+	void AddMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode);
+
+	UFUNCTION(BlueprintCallable)
+	void RemoveMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode);
+
 	//SpeedStart
 	UPROPERTY(BlueprintReadOnly)
 	float DefaultMaxWalkSpeed;
@@ -43,9 +59,15 @@ public:
 	UPROPERTY(Transient)
     UFloatModificatorContext* SpeedModificator;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UCameraShakeBase* WalkCameraShake;
+
 	//RunStatus
 	UFUNCTION(BlueprintCallable)
 	void StartRun();
+
+	UPROPERTY(EditAnywhere,BlueprintReadOnly)
+	UCameraShakeBase* RunCameraShake;
 
 	UPROPERTY()
 	UFloatModificator* SpeedRunModificator;
@@ -60,21 +82,28 @@ public:
 		DefaultMaxWalkSpeed = Speed;
 	}
 	//Speed End
+
+	//Slide Start
+
+	UPROPERTY(BlueprintReadWrite)
+	float DefaultGroundFriction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float GroundFrictionWhenSliding = 0.01;
 	
-	//Rolling Start
 	UFUNCTION(BlueprintCallable)
-	void StartRolling();
+	void StartSlideInput();
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float RollingMultiplyFriction = 0.5;
-
-	UPROPERTY(BlueprintReadOnly)
-	float DefaultWalkFriction;
+	UFUNCTION()
+	void StartSlide();
 
 	UFUNCTION(BlueprintCallable)
-	void  EndRolling();
+	void EndSlideInput();
 
-	//Rolling End
+	UFUNCTION()
+	void EndSlide();
+	//Slide End
+	
 	//Hook Code
 	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	bool ActiveCruck = false;
@@ -149,9 +178,6 @@ public:
 
 
 
-	UPROPERTY(BlueprintReadOnly)
-	bool RunOnWall;
-
 	UPROPERTY(EditAnywhere,BlueprintReadOnly)
 	float DefaultTimeRunOnWall = 5;
 
@@ -159,7 +185,10 @@ public:
 	float MinDotAngleToRunOnWall = -0.1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float SpeedRunOnWall = 600;
+	float SpeedRunOnWall = 300;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UCameraShakeBase* RunOnWalkCameraShake;
 
 	UPROPERTY()
 	FTimerHandle MoveOnWallTimeHandle;
@@ -181,9 +210,15 @@ public:
 	float GetRunWallStamina();
 
 	UFUNCTION(BlueprintCallable)
+	void StartRunOnWallInput();
+
+	UFUNCTION()
 	void StartRunOnWall();
 
 	UFUNCTION(BlueprintCallable)
+	void EndRunOnWallInput();
+
+	UFUNCTION()
 	void EndRunOnWall();
 protected:
 	UFUNCTION()

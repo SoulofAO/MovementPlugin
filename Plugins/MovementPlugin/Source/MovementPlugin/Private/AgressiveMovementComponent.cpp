@@ -8,14 +8,75 @@
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
 #include "FloatModificatorContextV1.h"
+#include "Camera/CameraShakeBase.h"
 
 UAgressiveMovementComponent::UAgressiveMovementComponent()
 {
 	DefaultMaxWalkSpeed = MaxWalkSpeed;
-	DefaultWalkFriction = GroundFriction;
 	SpeedModificator = NewObject<UFloatModificatorContext>(this, "SpeedModificator");
 	EndTimeMoveOnWallDelegate.BindUFunction(this, "TimerWallEnd");
 	RestoreMoveOnWallDelegate.BindUFunction(this, "TimerWallRestore");
+}
+
+void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode)
+{
+	TArray<EAgressiveMoveMode> OldAgressiveMode = AgressiveMoveMode;
+	AgressiveMoveMode.Add(NewAgressiveMoveMode);
+	if (!AgressiveMoveMode.Contains(NewAgressiveMoveMode))
+	{
+		switch (NewAgressiveMoveMode)
+		{
+		case EAgressiveMoveMode::None:
+			break;
+		case EAgressiveMoveMode::Slide:
+			if (AgressiveMoveMode.Contains(EAgressiveMoveMode::RunOnWall))
+			{
+				EndRunOnWall();
+			}
+			StartSlide();
+			break;
+		case EAgressiveMoveMode::RunOnWall:
+
+			if (MovementMode != EMovementMode::MOVE_Falling)
+			{
+				AgressiveMoveMode.Remove(NewAgressiveMoveMode);
+			}
+			else
+			{
+				StartRunOnWall();
+			}
+			break;
+		case EAgressiveMoveMode::Run:
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode)
+{
+	TArray<EAgressiveMoveMode> OldAgressiveMode = AgressiveMoveMode;
+	AgressiveMoveMode.Remove(NewAgressiveMoveMode);
+
+	if (!AgressiveMoveMode.Contains(NewAgressiveMoveMode))
+	{
+		switch (NewAgressiveMoveMode)
+		{
+		case EAgressiveMoveMode::None:
+			break;
+		case EAgressiveMoveMode::Slide:
+			EndSlide();
+			break;
+		case EAgressiveMoveMode::RunOnWall:
+			EndRunOnWall();
+			break;
+		case EAgressiveMoveMode::Run:
+			break;
+		default:
+			break;
+		}
+	}
 }
 
 void UAgressiveMovementComponent::StartRun()
@@ -41,15 +102,28 @@ void UAgressiveMovementComponent::EndRun()
 	MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
 }
 
-void UAgressiveMovementComponent::StartRolling()
+
+void UAgressiveMovementComponent::StartSlideInput()
 {
-	GroundFriction = RollingMultiplyFriction*DefaultWalkFriction;
+	AddMoveStatus(EAgressiveMoveMode::Slide);
 }
 
-void UAgressiveMovementComponent::EndRolling()
+void UAgressiveMovementComponent::StartSlide()
 {
-	GroundFriction = DefaultWalkFriction;
+	DefaultGroundFriction = GroundFriction;
+	GroundFriction = 0.01;
 }
+
+void UAgressiveMovementComponent::EndSlideInput()
+{
+	RemoveMoveStatus(EAgressiveMoveMode::Slide);
+}
+
+void UAgressiveMovementComponent::EndSlide()
+{
+	GroundFriction = DefaultGroundFriction;
+}
+
 
 AMovementCableActor* UAgressiveMovementComponent::SpawnCruck(FVector Location, TSubclassOf<AMovementCableActor> CableActorClass, bool CheckLocationDistance)
 {
@@ -199,7 +273,7 @@ FVector UAgressiveMovementComponent::GetMoveToWallVector()
 
 void UAgressiveMovementComponent::MoveOnWallEvent()
 {
-	if (RunOnWall)
+	if (AgressiveMoveMode.Contains(EAgressiveMoveMode::RunOnWall))
 	{
 		FVector LaunchVector = GetMoveToWallVector() * SpeedRunOnWall;
 		Launch(LaunchVector);
@@ -223,31 +297,32 @@ float UAgressiveMovementComponent::GetRunWallStamina()
 	return DefaultTimeRunOnWall;
 }
 
+void UAgressiveMovementComponent::StartRunOnWallInput()
+{
+	AddMoveStatus(EAgressiveMoveMode::RunOnWall);
+};
+
 void UAgressiveMovementComponent::StartRunOnWall()
 {
-	if()
-	if (RunOnWall == false)
-	{
-		RunOnWall = true;
-		GetWorld()->GetTimerManager().ClearTimer(MoveOnWallTimeHandle);
-		MoveOnWallTimeHandle.Invalidate();
-		GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, EndTimeMoveOnWallDelegate, GetRunWallStamina(), false);
-		GetWorld()->GetTimerManager().ClearTimer(RestoreMoveOnWallTimeHandle);
-		RestoreMoveOnWallTimeHandle.Invalidate();
-	}
+	GetWorld()->GetTimerManager().ClearTimer(MoveOnWallTimeHandle);
+	MoveOnWallTimeHandle.Invalidate();
+	GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, EndTimeMoveOnWallDelegate, GetRunWallStamina(), false);
+	GetWorld()->GetTimerManager().ClearTimer(RestoreMoveOnWallTimeHandle);
+	RestoreMoveOnWallTimeHandle.Invalidate();
 }
+
+void UAgressiveMovementComponent::EndRunOnWallInput()
+{
+	RemoveMoveStatus(EAgressiveMoveMode::RunOnWall);
+};
 
 void UAgressiveMovementComponent::EndRunOnWall()
 {
-	if (RunOnWall == true)
-	{
-		RunOnWall = false;
-		GetWorld()->GetTimerManager().ClearTimer(RestoreMoveOnWallTimeHandle);
-		RestoreMoveOnWallTimeHandle.Invalidate();
-		GetWorld()->GetTimerManager().SetTimer(RestoreMoveOnWallTimeHandle, RestoreMoveOnWallDelegate, DefaultTimeRunOnWall - GetRunWallStamina(), false);
-		GetWorld()->GetTimerManager().ClearTimer(MoveOnWallTimeHandle);
-		MoveOnWallTimeHandle.Invalidate();
-	}
+	GetWorld()->GetTimerManager().ClearTimer(RestoreMoveOnWallTimeHandle);
+	RestoreMoveOnWallTimeHandle.Invalidate();
+	GetWorld()->GetTimerManager().SetTimer(RestoreMoveOnWallTimeHandle, RestoreMoveOnWallDelegate, DefaultTimeRunOnWall - GetRunWallStamina(), false);
+	GetWorld()->GetTimerManager().ClearTimer(MoveOnWallTimeHandle);
+	MoveOnWallTimeHandle.Invalidate();
 }
 
 void UAgressiveMovementComponent::TimerWallEnd()
@@ -277,6 +352,8 @@ void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMo
 	if (MovementMode == EMovementMode::MOVE_Falling)
 	{
 		SpeedModificator->Modificators.Remove(SpeedStrengthPushModificator);
+		RemoveMoveStatus(EAgressiveMoveMode::Slide);
+		RemoveMoveStatus(EAgressiveMoveMode::Run);
 	}
 	else if(MovementMode == EMovementMode::MOVE_Walking || MovementMode == EMovementMode::MOVE_NavWalking)
 	{
