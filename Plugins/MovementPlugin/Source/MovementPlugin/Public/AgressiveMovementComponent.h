@@ -108,16 +108,23 @@ public:
 	UCameraShakeBase* WalkCameraShake;
 
 	//RunStatus
-	UFUNCTION(BlueprintCallable)
-	void StartRun();
 
-	UPROPERTY(EditAnywhere,BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UCameraShakeBase* RunCameraShake;
 
 	UPROPERTY()
 	UFloatModificator* SpeedRunModificator;
 
 	UFUNCTION(BlueprintCallable)
+	void StartRunInput();
+
+	UFUNCTION()
+	void StartRun();
+
+	UFUNCTION(BlueprintCallable)
+	void EndRunInput();
+
+	UFUNCTION()
 	void EndRun();
 	//EndRunStatus
 

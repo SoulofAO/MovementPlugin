@@ -53,8 +53,8 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 {
 	TArray<EAgressiveMoveMode> OldAgressiveMode = AgressiveMoveMode;
 	AgressiveMoveMode.Add(NewAgressiveMoveMode);
-	if (!AgressiveMoveMode.Contains(NewAgressiveMoveMode))
 	{
+	if (!AgressiveMoveMode.Contains(NewAgressiveMoveMode))
 		switch (NewAgressiveMoveMode)
 		{
 		case EAgressiveMoveMode::None:
@@ -78,6 +78,7 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 			}
 			break;
 		case EAgressiveMoveMode::Run:
+			StartRun();
 			break;
 		default:
 			break;
@@ -85,14 +86,14 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 	}
 }
 
-void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode)
+void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode RemoveAgressiveMoveMode)
 {
 	TArray<EAgressiveMoveMode> OldAgressiveMode = AgressiveMoveMode;
-	AgressiveMoveMode.Remove(NewAgressiveMoveMode);
+	AgressiveMoveMode.Remove(RemoveAgressiveMoveMode);
 
-	if (!AgressiveMoveMode.Contains(NewAgressiveMoveMode))
+	if (!AgressiveMoveMode.Contains(RemoveAgressiveMoveMode))
 	{
-		switch (NewAgressiveMoveMode)
+		switch (RemoveAgressiveMoveMode)
 		{
 		case EAgressiveMoveMode::None:
 			break;
@@ -103,6 +104,7 @@ void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode NewAgressi
 			EndRunOnWall();
 			break;
 		case EAgressiveMoveMode::Run:
+			EndRun();
 			break;
 		default:
 			break;
@@ -143,6 +145,7 @@ void UAgressiveMovementComponent::StartRun()
 	}
 	MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
 	AddStaminaModificator(-10,"Run");
+	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::EndRun);
 }
 
 void UAgressiveMovementComponent::EndRun()
@@ -229,6 +232,16 @@ void UAgressiveMovementComponent::EndSlide()
 	GroundFriction = DefaultGroundFriction;
 }
 
+
+void UAgressiveMovementComponent::StartRunInput()
+{
+	AddMoveStatus(EAgressiveMoveMode::Run);
+}
+
+void UAgressiveMovementComponent::EndRunInput()
+{
+	RemoveMoveStatus(EAgressiveMoveMode::Run)
+}
 
 AMovementCableActor* UAgressiveMovementComponent::SpawnCruck(FVector Location, TSubclassOf<AMovementCableActor> CableActorClass, bool CheckLocationDistance)
 {
