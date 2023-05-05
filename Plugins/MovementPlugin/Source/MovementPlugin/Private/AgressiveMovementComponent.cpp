@@ -25,6 +25,7 @@ bool UAgressiveMovementComponent::CanTakeStamina(float StaminaTaken)
 float UAgressiveMovementComponent::TakeStamina(float StaminaTaken)
 {
 	Stamina = Stamina - StaminaTaken;
+	Stamina = UKismetMathLibrary::Clamp(Stamina, 0, MaxStamina);
 	return Stamina;
 }
 
@@ -38,9 +39,14 @@ void UAgressiveMovementComponent::CheckStamina()
 
 void UAgressiveMovementComponent::TickCalculateStamina(float DeltaTime)
 {
-	Stamina = StaminaModificator->ApplyModificators(Stamina) * DeltaTime;
-	UKismetMathLibrary::Clamp(Stamina, 0, MaxStamina);
+	float LocalStamina = Stamina+StaminaModificator->ApplyModificators(0) * DeltaTime;
+	Stamina = LocalStamina;
+	Stamina = FMath::Clamp(Stamina, 0, MaxStamina);
 	CheckStamina();
+	if (Debug)
+	{
+		GEngine->AddOnScreenDebugMessage(-1,0.00,FColor::Black,"AddStamina"+FString::SanitizeFloat(StaminaModificator->ApplyModificators(1) * DeltaTime));
+	}
 }
 
 void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode)
@@ -106,13 +112,22 @@ void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode NewAgressi
 
 void UAgressiveMovementComponent::BeginPlay()
 {
+	Super::BeginPlay();
 	AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
 }
 
 void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	TickCalculateStamina(DeltaTime);
 	TraceForWalkChannel();
+}
+
+void UAgressiveMovementComponent::BeginDestroy()
+{
+	Super::BeginDestroy();
+	StaminaModificator->Modificators.Empty();
+	SpeedModificator->Modificators.Empty();
 }
 
 void UAgressiveMovementComponent::StartRun()
@@ -127,7 +142,7 @@ void UAgressiveMovementComponent::StartRun()
 		SpeedRunModificator->SelfValue = 2.0;
 	}
 	MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
-	AddStaminaModificator(10,"Run");
+	AddStaminaModificator(-10,"Run");
 }
 
 void UAgressiveMovementComponent::EndRun()
@@ -148,18 +163,21 @@ void UAgressiveMovementComponent::AddStaminaModificator(float Value, FString Nam
 	FloatModificator->Name = Name;
 	if (RemoveStaminaBaseAddWhenSpendStamina)
 	{
-		bool HasSubstractModificator = false;
-		for (UFloatModificator* LocalFloatModificator : StaminaModificator->Modificators)
+		if (StaminaModificator->FindModificator("BaseAddModificator"))
 		{
-			if (LocalFloatModificator->SelfValue < 0)
+			bool HasSubstractModificator = false;
+			for (UFloatModificator* LocalFloatModificator : StaminaModificator->Modificators)
 			{
-				HasSubstractModificator = true;
-				break;
+				if (LocalFloatModificator->SelfValue < 0)
+				{
+					HasSubstractModificator = true;
+					break;
+				}
 			}
-		}
-		if (HasSubstractModificator)
-		{
-			RemoveStaminaModificator("BaseAddModificator");
+			if (HasSubstractModificator)
+			{
+				RemoveStaminaModificator("BaseAddModificator");
+			}
 		}
 	}
 }
@@ -169,18 +187,22 @@ void UAgressiveMovementComponent::RemoveStaminaModificator(FString Name)
 	StaminaModificator->RemoveModificatorByName(Name);
 	if (RemoveStaminaBaseAddWhenSpendStamina)
 	{
-		bool HasSubstractModificator = false;
-		for (UFloatModificator* LocalFloatModificator : StaminaModificator->Modificators)
+		if (!(StaminaModificator->FindModificator("BaseAddModificator")))
 		{
-			if (LocalFloatModificator->SelfValue < 0)
+
+			bool HasSubstractModificator = false;
+			for (UFloatModificator* LocalFloatModificator : StaminaModificator->Modificators)
 			{
-				HasSubstractModificator = true;
-				break;
+				if (LocalFloatModificator->SelfValue < 0)
+				{
+					HasSubstractModificator = true;
+					break;
+				}
 			}
-		}
-		if (!HasSubstractModificator)
-		{
-			AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
+			if (!HasSubstractModificator)
+			{
+				AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
+			}
 		}
 	}
 }
@@ -317,12 +339,15 @@ void UAgressiveMovementComponent::JumpFromWall()
 {
 	if (CanTakeStamina(TakenJumpFromWallStamina))
 	{
-		TakeStamina(TakenJumpFromWallStamina);
 		if (!ReloadJumpTimeHandle.IsValid())
 		{
 			FVector JumpVector = GetJumpFromWallVector() * StrengthJumpFromWall;
-			Launch(Velocity + JumpVector);
-			GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, this, &UAgressiveMovementComponent::ReloadJump, TimeReloadJumpFromWall, false);
+			if (!(JumpVector.Length() == 0))
+			{
+				TakeStamina(TakenJumpFromWallStamina);
+				Launch(Velocity + JumpVector);
+				GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, this, &UAgressiveMovementComponent::ReloadJump, TimeReloadJumpFromWall, false);
+			}
 		}
 	}
 }

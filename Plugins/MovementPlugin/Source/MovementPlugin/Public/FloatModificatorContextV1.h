@@ -43,15 +43,18 @@ class MOVEMENTPLUGIN_API UFloatModificatorContext : public UObject
 	GENERATED_BODY()
 public:
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	TArray<UFloatModificator*> Modificators;
 
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable)
 	UFloatModificator* CreateNewModificator();
 
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable)
 	float ApplyModificators(float Value);
 
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable)
 	void RemoveModificatorByName(FString Name);
+
+	UFUNCTION(BlueprintCallable)
+	UFloatModificator* FindModificator(FString Name);
 };

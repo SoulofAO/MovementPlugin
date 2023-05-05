@@ -47,3 +47,15 @@ void UFloatModificatorContext::RemoveModificatorByName(FString Name)
 		}
 	}
 }
+
+UFloatModificator* UFloatModificatorContext::FindModificator(FString Name)
+{
+	for (UFloatModificator* Modificator : Modificators)
+	{
+		if (Name == Modificator->Name)
+		{
+			return Modificator;
+		}
+	}
+	return nullptr;
+}

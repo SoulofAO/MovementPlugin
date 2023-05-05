@@ -86,6 +86,8 @@ public:
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	virtual void BeginDestroy() override;
+
 	UFUNCTION(BlueprintCallable)
 	void AddMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode);
 
