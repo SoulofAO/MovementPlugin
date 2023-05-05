@@ -22,7 +22,7 @@ enum class EAgressiveMoveMode : uint8
 };
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FReadActorDestroyed, AActor, OnDestroyed, AActor*, DestroyedActor);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FEndTimeMoveOnWall);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FEndStamina);
 
 
 
@@ -42,6 +42,49 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 	TArray<EAgressiveMoveMode> AgressiveMoveMode = { EAgressiveMoveMode::None };
+
+	UPROPERTY(BlueprintReadWrite,EditAnywhere)
+	float Stamina = 100;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float MaxStamina = 100;
+
+	UPROPERTY(BlueprintReadOnly, Transient)
+	UFloatModificatorContext* StaminaModificator;
+
+	UFUNCTION(BlueprintCallable)
+	bool CanTakeStamina(float StaminaTaken = 20);
+
+	UFUNCTION(BlueprintCallable)
+	float TakeStamina(float StaminaTaken = 20);
+
+	UFUNCTION()
+	void CheckStamina();
+
+	UFUNCTION()
+	void TickCalculateStamina(float DeltaTime);
+
+	UPROPERTY(BlueprintCallable)
+	FEndStamina EndStaminaDelegate;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float BaseAddStaminaValue = 20;
+
+	UPROPERTY(BlueprintReadOnly,EditAnywhere)
+	bool RemoveStaminaBaseAddWhenSpendStamina = true;
+
+	UFUNCTION(BlueprintCallable)
+	void AddStaminaModificator(float Value, FString Name);
+
+	UFUNCTION(BlueprintCallable)
+	void RemoveStaminaModificator(FString Name);
+
+
+
+	//Core
+	virtual void BeginPlay() override;
+
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	UFUNCTION(BlueprintCallable)
 	void AddMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode);
@@ -132,6 +175,9 @@ public:
 	UFUNCTION()
 	FVector GetApplyCruck();
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float TakenJumpFromCruckStamina = 30;
+
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "JumpFromAllCruck"))
 	void JumpFromAllCruck(float Strength, FVector AddVector);
 
@@ -155,9 +201,6 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	FVector GetJumpFromWallVector();
-
-	UFUNCTION(BlueprintCallable)
-	void ReloadJump();
 	
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float StrengthJumpFromWall = 600;
@@ -168,8 +211,14 @@ public:
 	UPROPERTY(BlueprintReadWrite)
 	FTimerHandle ReloadJumpTimeHandle;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float TakenJumpFromWallStamina = 30;
+
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "JumpFromWall"))
 	void JumpFromWall();
+
+	UFUNCTION(BlueprintCallable)
+	void ReloadJump();
 
 
 	//JummFromWallEnd
@@ -178,8 +227,8 @@ public:
 
 
 
-	UPROPERTY(EditAnywhere,BlueprintReadOnly)
-	float DefaultTimeRunOnWall = 5;
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
+	float DefaultStaminaExpence = 10;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float MinDotAngleToRunOnWall = -0.1;
@@ -190,24 +239,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UCameraShakeBase* RunOnWalkCameraShake;
 
-	UPROPERTY()
-	FTimerHandle MoveOnWallTimeHandle;
-
-	UPROPERTY()
-	FTimerHandle RestoreMoveOnWallTimeHandle;
-
-	FTimerDelegate EndTimeMoveOnWallDelegate;
-
-	FTimerDelegate RestoreMoveOnWallDelegate;
 
 	UFUNCTION(BlueprintCallable)
 	FVector GetMoveToWallVector();
 
 	UFUNCTION()
 	void MoveOnWallEvent();
-
-	UFUNCTION(BlueprintCallable)
-	float GetRunWallStamina();
 
 	UFUNCTION(BlueprintCallable)
 	void StartRunOnWallInput();
@@ -220,12 +257,16 @@ public:
 
 	UFUNCTION()
 	void EndRunOnWall();
-protected:
-	UFUNCTION()
-	void TimerWallEnd();
 
-	UFUNCTION()
-	void TimerWallRestore();
+	UPROPERTY(BlueprintReadWrite,EditAnywhere)
+	float MinMoveOnWallVelocity = 100;
+
+	UFUNCTION(BlueprintCallable)
+	void CheckVelocityMoveOnWall();
+
+	UFUNCTION(BlueprintCallable)
+	void EndRunOnWallDirectly();
+
 public:
 	//MoveOnWallEnd
 

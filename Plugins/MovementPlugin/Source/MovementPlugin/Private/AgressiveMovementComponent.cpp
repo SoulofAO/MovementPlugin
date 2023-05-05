@@ -14,8 +14,33 @@ UAgressiveMovementComponent::UAgressiveMovementComponent()
 {
 	DefaultMaxWalkSpeed = MaxWalkSpeed;
 	SpeedModificator = NewObject<UFloatModificatorContext>(this, "SpeedModificator");
-	EndTimeMoveOnWallDelegate.BindUFunction(this, "TimerWallEnd");
-	RestoreMoveOnWallDelegate.BindUFunction(this, "TimerWallRestore");
+	StaminaModificator = NewObject<UFloatModificatorContext>(this, "StaminaModificator");
+}
+
+bool UAgressiveMovementComponent::CanTakeStamina(float StaminaTaken)
+{
+	return Stamina >= StaminaTaken;
+}
+
+float UAgressiveMovementComponent::TakeStamina(float StaminaTaken)
+{
+	Stamina = Stamina - StaminaTaken;
+	return Stamina;
+}
+
+void UAgressiveMovementComponent::CheckStamina()
+{
+	if (Stamina <= 0)
+	{
+		EndStaminaDelegate.Broadcast();
+	}
+}
+
+void UAgressiveMovementComponent::TickCalculateStamina(float DeltaTime)
+{
+	Stamina = StaminaModificator->ApplyModificators(Stamina) * DeltaTime;
+	UKismetMathLibrary::Clamp(Stamina, 0, MaxStamina);
+	CheckStamina();
 }
 
 void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode)
@@ -79,6 +104,17 @@ void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode NewAgressi
 	}
 }
 
+void UAgressiveMovementComponent::BeginPlay()
+{
+	AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
+}
+
+void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	TickCalculateStamina(DeltaTime);
+	TraceForWalkChannel();
+}
+
 void UAgressiveMovementComponent::StartRun()
 {
 	if (!SpeedRunModificator)
@@ -91,6 +127,7 @@ void UAgressiveMovementComponent::StartRun()
 		SpeedRunModificator->SelfValue = 2.0;
 	}
 	MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
+	AddStaminaModificator(10,"Run");
 }
 
 void UAgressiveMovementComponent::EndRun()
@@ -100,6 +137,52 @@ void UAgressiveMovementComponent::EndRun()
 		SpeedRunModificator->SelfValue = 1.0;
 	}
 	MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
+	RemoveStaminaModificator("Run");
+}
+
+void UAgressiveMovementComponent::AddStaminaModificator(float Value, FString Name)
+{
+	UFloatModificator* FloatModificator = StaminaModificator->CreateNewModificator();
+	FloatModificator->SelfValue = Value;
+	FloatModificator->OperationType = EModificatorOperation::Add;
+	FloatModificator->Name = Name;
+	if (RemoveStaminaBaseAddWhenSpendStamina)
+	{
+		bool HasSubstractModificator = false;
+		for (UFloatModificator* LocalFloatModificator : StaminaModificator->Modificators)
+		{
+			if (LocalFloatModificator->SelfValue < 0)
+			{
+				HasSubstractModificator = true;
+				break;
+			}
+		}
+		if (HasSubstractModificator)
+		{
+			RemoveStaminaModificator("BaseAddModificator");
+		}
+	}
+}
+
+void UAgressiveMovementComponent::RemoveStaminaModificator(FString Name)
+{
+	StaminaModificator->RemoveModificatorByName(Name);
+	if (RemoveStaminaBaseAddWhenSpendStamina)
+	{
+		bool HasSubstractModificator = false;
+		for (UFloatModificator* LocalFloatModificator : StaminaModificator->Modificators)
+		{
+			if (LocalFloatModificator->SelfValue < 0)
+			{
+				HasSubstractModificator = true;
+				break;
+			}
+		}
+		if (!HasSubstractModificator)
+		{
+			AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
+		}
+	}
 }
 
 
@@ -171,14 +254,18 @@ FVector UAgressiveMovementComponent::GetApplyCruck()
 }
 void UAgressiveMovementComponent::JumpFromAllCruck(float Strength, FVector AddVector)
 {
-	for (AMovementCableActor* CableActor : Cabels)
+	if (CanTakeStamina(TakenJumpFromCruckStamina))
 	{
-		FVector LaunchVector = CableActor->GetJumpUnitVector() + AddVector;
-		Launch(CableActor->GetJumpUnitVector() * Strength);
-		CableActor->Destroy();
+		TakeStamina(TakenJumpFromCruckStamina);
+		for (AMovementCableActor* CableActor : Cabels)
+		{
+			FVector LaunchVector = CableActor->GetJumpUnitVector() + AddVector;
+			Launch(CableActor->GetJumpUnitVector() * Strength);
+			CableActor->Destroy();
+		}
+		Cabels.Empty();
+		MaxWalkSpeed = DefaultMaxWalkSpeed;
 	}
-	Cabels.Empty();
-	MaxWalkSpeed = DefaultMaxWalkSpeed;
 }
 void UAgressiveMovementComponent::JumpFromCruckByIndex(float Strength, FVector AddVector, int Index)
 {
@@ -226,19 +313,25 @@ FVector UAgressiveMovementComponent::GetJumpFromWallVector()
 	}
 	return JumpVector;
 }
+void UAgressiveMovementComponent::JumpFromWall()
+{
+	if (CanTakeStamina(TakenJumpFromWallStamina))
+	{
+		TakeStamina(TakenJumpFromWallStamina);
+		if (!ReloadJumpTimeHandle.IsValid())
+		{
+			FVector JumpVector = GetJumpFromWallVector() * StrengthJumpFromWall;
+			Launch(Velocity + JumpVector);
+			GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, this, &UAgressiveMovementComponent::ReloadJump, TimeReloadJumpFromWall, false);
+		}
+	}
+}
+
 void UAgressiveMovementComponent::ReloadJump()
 {
 	ReloadJumpTimeHandle.Invalidate();
 }
-void UAgressiveMovementComponent::JumpFromWall()
-{
-	if (!ReloadJumpTimeHandle.IsValid())
-	{
- 		FVector JumpVector = GetJumpFromWallVector() * StrengthJumpFromWall;
-		Launch(Velocity + JumpVector);
-		GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, this, &UAgressiveMovementComponent::ReloadJump, TimeReloadJumpFromWall, false);
-	}
-}
+
 FVector UAgressiveMovementComponent::GetMoveToWallVector()
 {
 	FHitResult OptimalWall;
@@ -283,20 +376,6 @@ void UAgressiveMovementComponent::MoveOnWallEvent()
 		}
 	}
 }
-
-float UAgressiveMovementComponent::GetRunWallStamina()
-{
-	if (MoveOnWallTimeHandle.IsValid())
-	{
-		return GetWorld()->GetTimerManager().GetTimerRemaining(MoveOnWallTimeHandle);
-	}
-	if (RestoreMoveOnWallTimeHandle.IsValid())
-	{
-		return DefaultTimeRunOnWall - GetWorld()->GetTimerManager().GetTimerRemaining(RestoreMoveOnWallTimeHandle);
-	}
-	return DefaultTimeRunOnWall;
-}
-
 void UAgressiveMovementComponent::StartRunOnWallInput()
 {
 	AddMoveStatus(EAgressiveMoveMode::RunOnWall);
@@ -304,11 +383,8 @@ void UAgressiveMovementComponent::StartRunOnWallInput()
 
 void UAgressiveMovementComponent::StartRunOnWall()
 {
-	GetWorld()->GetTimerManager().ClearTimer(MoveOnWallTimeHandle);
-	MoveOnWallTimeHandle.Invalidate();
-	GetWorld()->GetTimerManager().SetTimer(MoveOnWallTimeHandle, EndTimeMoveOnWallDelegate, GetRunWallStamina(), false);
-	GetWorld()->GetTimerManager().ClearTimer(RestoreMoveOnWallTimeHandle);
-	RestoreMoveOnWallTimeHandle.Invalidate();
+	AddStaminaModificator(-10, "RunOnWall");
+	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::EndRunOnWall);
 }
 
 void UAgressiveMovementComponent::EndRunOnWallInput()
@@ -318,14 +394,18 @@ void UAgressiveMovementComponent::EndRunOnWallInput()
 
 void UAgressiveMovementComponent::EndRunOnWall()
 {
-	GetWorld()->GetTimerManager().ClearTimer(RestoreMoveOnWallTimeHandle);
-	RestoreMoveOnWallTimeHandle.Invalidate();
-	GetWorld()->GetTimerManager().SetTimer(RestoreMoveOnWallTimeHandle, RestoreMoveOnWallDelegate, DefaultTimeRunOnWall - GetRunWallStamina(), false);
-	GetWorld()->GetTimerManager().ClearTimer(MoveOnWallTimeHandle);
-	MoveOnWallTimeHandle.Invalidate();
+	RemoveStaminaModificator("RunOnWall");
 }
 
-void UAgressiveMovementComponent::TimerWallEnd()
+void UAgressiveMovementComponent::CheckVelocityMoveOnWall()
+{
+	if (GetCharacterOwner()->GetVelocity().Length() < MinMoveOnWallVelocity)
+	{
+		RemoveMoveStatus(EAgressiveMoveMode::RunOnWall);
+	}
+}
+
+void UAgressiveMovementComponent::EndRunOnWallDirectly()
 {
 	if (Debug)
 	{
@@ -333,16 +413,6 @@ void UAgressiveMovementComponent::TimerWallEnd()
 	}
 	JumpFromWall();
 	EndRunOnWall();
-}
-
-void UAgressiveMovementComponent::TimerWallRestore()
-{
-	if (Debug)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Black, "TimerWallRestore");
-	}
-	RestoreMoveOnWallTimeHandle.Invalidate();
-
 }
 
 void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
@@ -374,7 +444,6 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 		Launch(Velocity + CruckVector);
 	}
 	MaxWalkSpeed = DefaultMaxWalkSpeed;
-	TraceForWalkChannel();
 	MoveOnWallEvent();
 	
 }
@@ -382,7 +451,6 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 {
 	Super::PhysWalking(deltaTime, Iterations);
-	TraceForWalkChannel();
 	FVector CruckVector = GetApplyCruck();
 	if (!CruckVector.IsNearlyZero())
 	{
@@ -394,3 +462,4 @@ void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 		MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
 	}
 }
+
