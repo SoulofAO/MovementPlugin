@@ -4,11 +4,13 @@
 #include "AgressiveMovementComponent.h"
 #include "MovementCableActor.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
 #include "FloatModificatorContextV1.h"
 #include "Camera/CameraShakeBase.h"
+#include "Curves/CurveFloat.h"
 
 UAgressiveMovementComponent::UAgressiveMovementComponent()
 {
@@ -196,8 +198,14 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 void UAgressiveMovementComponent::BeginDestroy()
 {
 	Super::BeginDestroy();
-	StaminaModificator->Modificators.Empty();
-	SpeedModificator->Modificators.Empty();
+	if (StaminaModificator)
+	{
+		StaminaModificator->Modificators.Empty();
+	}
+	if (SpeedModificator)
+	{
+		SpeedModificator->Modificators.Empty();
+	}
 }
 
 void UAgressiveMovementComponent::StartRun()
@@ -377,6 +385,69 @@ FVector UAgressiveMovementComponent::GetApplyCruck()
 		}
 	}
 	return MovementDirection;
+}
+void UAgressiveMovementComponent::PlayStepTick(float DeltaTime)
+{
+	if (PlaySensorEvents)
+	{
+		if (VelocityToDelayPerStep)
+		{
+			if ((MovementMode != EMovementMode::MOVE_Falling) && (!AgressiveMoveMode.Contains(EAgressiveMoveMode::Slide)))
+			{
+				TickTimePlayStep = DeltaTime + TickTimePlayStep;
+				float GetTimeToStep = VelocityToDelayPerStep->GetFloatValue(GetCharacterOwner()->GetVelocity().Length());
+				if (TickTimePlayStep > GetTimeToStep)
+				{
+					if (PlayCameraShakes)
+					{
+						if (AgressiveMoveMode.Contains(EAgressiveMoveMode::Run))
+						{
+							if (RunCameraShake)
+							{
+								UGameplayStatics::GetPlayerController(this, 0)->PlayerCameraManager->StartCameraShake(RunCameraShake);
+							}
+						}
+						else
+						{
+							if (WalkCameraShake)
+							{
+								UGameplayStatics::GetPlayerController(this, 0)->PlayerCameraManager->StartCameraShake(WalkCameraShake);
+							}
+						}
+					}
+					if (PlayMoveSounds)
+					{
+						USceneComponent* LocalAttachToComponent = GetCharacterOwner()->GetCapsuleComponent();
+						FName LocalAttachPointName = FName("None");
+						FVector LocalLocation = GetCharacterOwner()->GetCapsuleComponent()->GetComponentLocation() - (0, 0, GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * -0.4);
+
+						if (AgressiveMoveMode.Contains(EAgressiveMoveMode::Run))
+						{
+							USoundBase* LocalSound = SoundRunStep;
+							if (LocalSound)
+							{
+								UGameplayStatics::SpawnSoundAttached(LocalSound, LocalAttachToComponent, LocalAttachPointName, LocalLocation, EAttachLocation::KeepWorldPosition, false, 1.0, 1.0, 0.0, nullptr, nullptr);
+							}
+						}
+						else
+						{
+							USoundBase* LocalSound = SoundRunStep;
+							if (LocalSound)
+							{
+								UGameplayStatics::SpawnSoundAttached(LocalSound, LocalAttachToComponent, LocalAttachPointName, LocalLocation, EAttachLocation::KeepWorldPosition, false, 1.0, 1.0, 0.0, nullptr, nullptr);
+							}
+						}
+					}
+
+					TickTimePlayStep = 0.0;
+				}
+			}
+			else
+			{
+				TickTimePlayStep = 0.0;
+			}
+		}
+	}
 }
 void UAgressiveMovementComponent::JumpFromAllCruck(float Strength, FVector AddVector)
 {
@@ -601,5 +672,6 @@ void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 	{
 		RemoveMoveStatus(EAgressiveMoveMode::Slide);
 	};
+	PlayStepTick(deltaTime);
 }
 

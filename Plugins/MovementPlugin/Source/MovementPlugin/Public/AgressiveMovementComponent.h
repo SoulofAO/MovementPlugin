@@ -134,16 +134,40 @@ public:
 	UPROPERTY(Transient)
     UFloatModificatorContext* SpeedModificator;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	UCameraShakeBase* WalkCameraShake;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StepSensorEvent|Shake")
+	TSubclassOf<UCameraShakeBase> WalkCameraShake;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StepSensorEvent|Sound")
+	USoundBase* SoundWalkStep;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "StepSensorEvent")
+	bool PlaySensorEvents = true;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "StepSensorEvent|Sound")
+	bool PlayMoveSounds = true;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "StepSensorEvent|Shake")
+	bool PlayCameraShakes = true;
+
+	UFUNCTION()
+	void PlayStepTick(float DeltaTime);
+
+	UPROPERTY(BlueprintReadOnly, Category = "StepSensorEvent")
+	float TickTimePlayStep = 0.0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StepSensorEvent")
+	UCurveFloat* VelocityToDelayPerStep;
 
 	//RunStatus
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	UCameraShakeBase* RunCameraShake;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "StepSensorEvent|Shake")
+	TSubclassOf<UCameraShakeBase> RunCameraShake;
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly)
 	UFloatModificator* SpeedRunModificator;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StepSensorEvent|Sound")
+	USoundBase* SoundRunStep;
 
 	UFUNCTION(BlueprintCallable)
 	void StartRunInput();
