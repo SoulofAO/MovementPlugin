@@ -25,6 +25,17 @@ DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FReadActorDestroyed, AActor, 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FEndStamina);
 
 
+USTRUCT(Blueprintable)
+struct FAgressiveMoveModeByPriority
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	EAgressiveMoveMode AgressiveMoveMode;
+
+	UPROPERTY(BlueprintReadOnly)
+	int Priority = 0;
+};
 
 UCLASS()
 class MOVEMENTPLUGIN_API UAgressiveMovementComponent : public UCharacterMovementComponent
@@ -41,7 +52,20 @@ public:
 	bool Debug = true;
 
 	UPROPERTY(BlueprintReadOnly)
-	TArray<EAgressiveMoveMode> AgressiveMoveMode = { EAgressiveMoveMode::None };
+	TArray<EAgressiveMoveMode> AgressiveMoveMode = {};
+
+	UPROPERTY(BlueprintReadOnly)
+	TArray<FAgressiveMoveModeByPriority> NotActiveAgressiveMoveMode = {};
+
+	UFUNCTION(BlueprintCallable)
+	void CheckActiveMoveMode();
+
+	UFUNCTION(BlueprintCallable)
+	void AddNewAgressiveModeInput(EAgressiveMoveMode MoveMode, int Priority = 0);
+
+	UFUNCTION(BlueprintCallable)
+	void RemoveAgressiveModeInput(EAgressiveMoveMode RemoveMoveMode);
+	
 
 	UPROPERTY(BlueprintReadWrite,EditAnywhere)
 	float Stamina = 100;
@@ -98,8 +122,14 @@ public:
 	UPROPERTY(BlueprintReadOnly)
 	float DefaultMaxWalkSpeed;
 
+	UPROPERTY(BlueprintReadOnly)
+	float DefaultMaxAcceleration;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float SpeedRunMultiply = 2;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float AccelerationRunMultiply = 2;
 
 	UPROPERTY(Transient)
     UFloatModificatorContext* SpeedModificator;
@@ -126,10 +156,13 @@ public:
 
 	UFUNCTION()
 	void EndRun();
+
+	UFUNCTION()
+	void LowStaminaEndRun();
 	//EndRunStatus
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "SetMaxWalkSpeed"))
-		void SetMaxWalkSpeed(float Speed)
+	void SetMaxWalkSpeed(float Speed)
 	{
 		DefaultMaxWalkSpeed = Speed;
 	}
@@ -142,6 +175,18 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float GroundFrictionWhenSliding = 0.01;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MinSpeedForSliding = 100;
+
+	UPROPERTY(BlueprintReadWrite)
+	float DefaultCharacterSize;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float SlideCharacterSize = 40;
+
+	UFUNCTION(BlueprintCallable)
+	void SetSlideCharacterSize(float Size = 40);
 	
 	UFUNCTION(BlueprintCallable)
 	void StartSlideInput();
@@ -202,6 +247,9 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 	TArray<FHitResult> WallTraceHitResults;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool TraceSucsess = false;
 
 	//JumpFromWallStart
 
@@ -266,6 +314,9 @@ public:
 
 	UFUNCTION()
 	void EndRunOnWall();
+
+	UFUNCTION()
+	void LowStaminaEndRunOnWall();
 
 	UPROPERTY(BlueprintReadWrite,EditAnywhere)
 	float MinMoveOnWallVelocity = 100;

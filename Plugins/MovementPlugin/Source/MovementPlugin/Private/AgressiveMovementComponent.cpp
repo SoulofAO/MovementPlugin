@@ -15,6 +15,73 @@ UAgressiveMovementComponent::UAgressiveMovementComponent()
 	DefaultMaxWalkSpeed = MaxWalkSpeed;
 	SpeedModificator = NewObject<UFloatModificatorContext>(this, "SpeedModificator");
 	StaminaModificator = NewObject<UFloatModificatorContext>(this, "StaminaModificator");
+	MaxAcceleration = 600;
+}
+
+void UAgressiveMovementComponent::CheckActiveMoveMode()
+{
+	for (int count = 0; count<NotActiveAgressiveMoveMode.Num();count++)
+	{
+		FAgressiveMoveModeByPriority LocalAgressiveMoveMode = NotActiveAgressiveMoveMode[count];
+		switch (LocalAgressiveMoveMode.AgressiveMoveMode)
+		{
+		case EAgressiveMoveMode::Run:
+			if ((MovementMode == EMovementMode::MOVE_Walking) && !AgressiveMoveMode.Contains(EAgressiveMoveMode::Slide))
+			{
+				AddMoveStatus(EAgressiveMoveMode::Run);
+				count--;
+			}
+			break;
+
+		case EAgressiveMoveMode::Slide:
+		{
+			FVector NormilizeMultiplier = { 1.0,1.0,0 };
+			FVector LocalNormaliaizeVelocity = GetCharacterOwner()->GetVelocity() * NormilizeMultiplier;
+			if ((LocalNormaliaizeVelocity.Length() > MinSpeedForSliding) && MovementMode == EMovementMode::MOVE_Falling)
+			{
+				AddMoveStatus(EAgressiveMoveMode::Slide);
+				count--;
+				break;
+			}
+		}
+		case EAgressiveMoveMode::RunOnWall:
+			if ((MovementMode == EMovementMode::MOVE_Falling)&&TraceSucsess)
+			{
+				AddMoveStatus(EAgressiveMoveMode::RunOnWall);
+				count--;
+			}
+			break;
+		}
+	}
+}
+
+void UAgressiveMovementComponent::AddNewAgressiveModeInput(EAgressiveMoveMode MoveMode, int Priority)
+{
+	int count = 0;
+	for (FAgressiveMoveModeByPriority LocalMoveMode : NotActiveAgressiveMoveMode)
+	{
+		if (LocalMoveMode.Priority > Priority)
+		{
+			break;
+		}
+		count = count + 1;
+	}
+	FAgressiveMoveModeByPriority NewAgressiveMoveModeByPriority = { MoveMode,Priority };
+	NotActiveAgressiveMoveMode.Insert(NewAgressiveMoveModeByPriority, count);
+}
+
+void UAgressiveMovementComponent::RemoveAgressiveModeInput(EAgressiveMoveMode RemoveMoveMode)
+{
+	int count = 0;
+	for (FAgressiveMoveModeByPriority LocalAgressiveMoveMode : NotActiveAgressiveMoveMode)
+	{
+		if (LocalAgressiveMoveMode.AgressiveMoveMode == RemoveMoveMode)
+		{
+			NotActiveAgressiveMoveMode.RemoveAt(count);
+			break;
+		}
+		count = count + 1;
+	}
 }
 
 bool UAgressiveMovementComponent::CanTakeStamina(float StaminaTaken)
@@ -51,15 +118,17 @@ void UAgressiveMovementComponent::TickCalculateStamina(float DeltaTime)
 
 void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode)
 {
+	RemoveAgressiveModeInput(NewAgressiveMoveMode);
 	TArray<EAgressiveMoveMode> OldAgressiveMode = AgressiveMoveMode;
 	AgressiveMoveMode.Add(NewAgressiveMoveMode);
 	{
-	if (!AgressiveMoveMode.Contains(NewAgressiveMoveMode))
+	if (AgressiveMoveMode.Contains(NewAgressiveMoveMode))
 		switch (NewAgressiveMoveMode)
 		{
 		case EAgressiveMoveMode::None:
 			break;
 		case EAgressiveMoveMode::Slide:
+			RemoveMoveStatus(EAgressiveMoveMode::Run);
 			if (AgressiveMoveMode.Contains(EAgressiveMoveMode::RunOnWall))
 			{
 				EndRunOnWall();
@@ -67,17 +136,10 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 			StartSlide();
 			break;
 		case EAgressiveMoveMode::RunOnWall:
-
-			if (MovementMode != EMovementMode::MOVE_Falling)
-			{
-				AgressiveMoveMode.Remove(NewAgressiveMoveMode);
-			}
-			else
-			{
-				StartRunOnWall();
-			}
+			StartRunOnWall();
 			break;
 		case EAgressiveMoveMode::Run:
+			RemoveMoveStatus(EAgressiveMoveMode::Slide);
 			StartRun();
 			break;
 		default:
@@ -89,9 +151,8 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode RemoveAgressiveMoveMode)
 {
 	TArray<EAgressiveMoveMode> OldAgressiveMode = AgressiveMoveMode;
-	AgressiveMoveMode.Remove(RemoveAgressiveMoveMode);
 
-	if (!AgressiveMoveMode.Contains(RemoveAgressiveMoveMode))
+	if (AgressiveMoveMode.Contains(RemoveAgressiveMoveMode))
 	{
 		switch (RemoveAgressiveMoveMode)
 		{
@@ -110,12 +171,18 @@ void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode RemoveAgre
 			break;
 		}
 	}
+	RemoveAgressiveModeInput(RemoveAgressiveMoveMode);
+	AgressiveMoveMode.Remove(RemoveAgressiveMoveMode);
+
 }
 
 void UAgressiveMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
+	DefaultCharacterSize = GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	DefaultMaxAcceleration = MaxAcceleration;
+	DefaultMaxWalkSpeed = MaxWalkSpeed;
 }
 
 void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -123,6 +190,7 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	TickCalculateStamina(DeltaTime);
 	TraceForWalkChannel();
+	CheckActiveMoveMode();
 }
 
 void UAgressiveMovementComponent::BeginDestroy()
@@ -143,19 +211,35 @@ void UAgressiveMovementComponent::StartRun()
 	{
 		SpeedRunModificator->SelfValue = 2.0;
 	}
-	MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
+	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
 	AddStaminaModificator(-10,"Run");
-	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::EndRun);
+	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRun);
 }
 
 void UAgressiveMovementComponent::EndRun()
 {
+	EndStaminaDelegate.RemoveDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRun);
 	if (SpeedRunModificator)
 	{
 		SpeedRunModificator->SelfValue = 1.0;
 	}
-	MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
+	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
 	RemoveStaminaModificator("Run");
+}
+
+void UAgressiveMovementComponent::StartRunInput()
+{
+	AddNewAgressiveModeInput(EAgressiveMoveMode::Run, 2);
+}
+
+void UAgressiveMovementComponent::EndRunInput()
+{
+	RemoveMoveStatus(EAgressiveMoveMode::Run);
+}
+
+void UAgressiveMovementComponent::LowStaminaEndRun()
+{
+	RemoveMoveStatus(EAgressiveMoveMode::Run);
 }
 
 void UAgressiveMovementComponent::AddStaminaModificator(float Value, FString Name)
@@ -210,16 +294,30 @@ void UAgressiveMovementComponent::RemoveStaminaModificator(FString Name)
 	}
 }
 
+void UAgressiveMovementComponent::SetSlideCharacterSize(float Size)
+{
+	SlideCharacterSize = Size;
+	if (AgressiveMoveMode.Contains(EAgressiveMoveMode::Slide))
+	{
+		GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), Size);
+	}
+}
 
 void UAgressiveMovementComponent::StartSlideInput()
 {
-	AddMoveStatus(EAgressiveMoveMode::Slide);
+	AddNewAgressiveModeInput(EAgressiveMoveMode::Slide, 0);
 }
 
 void UAgressiveMovementComponent::StartSlide()
 {
 	DefaultGroundFriction = GroundFriction;
 	GroundFriction = 0.01;
+	GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), SlideCharacterSize);
+	UFloatModificator* FloatModificator = SpeedModificator->CreateNewModificator();
+	FloatModificator->SelfValue = 0;
+	FloatModificator->Name = "Slide";
+	FloatModificator->OperationType = EModificatorOperation::Multiply;
+	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
 }
 
 void UAgressiveMovementComponent::EndSlideInput()
@@ -230,18 +328,11 @@ void UAgressiveMovementComponent::EndSlideInput()
 void UAgressiveMovementComponent::EndSlide()
 {
 	GroundFriction = DefaultGroundFriction;
+	GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), DefaultCharacterSize);
+	SpeedModificator->RemoveModificatorByName("Slide");
+	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
 }
 
-
-void UAgressiveMovementComponent::StartRunInput()
-{
-	AddMoveStatus(EAgressiveMoveMode::Run);
-}
-
-void UAgressiveMovementComponent::EndRunInput()
-{
-	RemoveMoveStatus(EAgressiveMoveMode::Run)
-}
 
 AMovementCableActor* UAgressiveMovementComponent::SpawnCruck(FVector Location, TSubclassOf<AMovementCableActor> CableActorClass, bool CheckLocationDistance)
 {
@@ -333,6 +424,7 @@ void UAgressiveMovementComponent::TraceForWalkChannel()
 	}
 
 	WallTraceHitResults = HitResults;
+	TraceSucsess = !WallTraceHitResults.IsEmpty();
 }
 FVector UAgressiveMovementComponent::GetJumpFromWallVector()
 {
@@ -416,13 +508,13 @@ void UAgressiveMovementComponent::MoveOnWallEvent()
 }
 void UAgressiveMovementComponent::StartRunOnWallInput()
 {
-	AddMoveStatus(EAgressiveMoveMode::RunOnWall);
+	AddNewAgressiveModeInput(EAgressiveMoveMode::RunOnWall, 3);
 };
 
 void UAgressiveMovementComponent::StartRunOnWall()
 {
 	AddStaminaModificator(-10, "RunOnWall");
-	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::EndRunOnWall);
+	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRunOnWall);
 }
 
 void UAgressiveMovementComponent::EndRunOnWallInput()
@@ -432,7 +524,13 @@ void UAgressiveMovementComponent::EndRunOnWallInput()
 
 void UAgressiveMovementComponent::EndRunOnWall()
 {
+	EndStaminaDelegate.RemoveDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRunOnWall);
 	RemoveStaminaModificator("RunOnWall");
+}
+
+void UAgressiveMovementComponent::LowStaminaEndRunOnWall()
+{
+	RemoveMoveStatus(EAgressiveMoveMode::RunOnWall);
 }
 
 void UAgressiveMovementComponent::CheckVelocityMoveOnWall()
@@ -499,5 +597,9 @@ void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 		SpeedStrengthPushModificator->SelfValue = DotScale* FMath::Clamp(1 - CruckVector.Size() / StrengthPushCruck, 0, 1);
 		MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
 	}
+	if (GetCharacterOwner()->GetVelocity().Length() < MinSpeedForSliding)
+	{
+		RemoveMoveStatus(EAgressiveMoveMode::Slide);
+	};
 }
 
