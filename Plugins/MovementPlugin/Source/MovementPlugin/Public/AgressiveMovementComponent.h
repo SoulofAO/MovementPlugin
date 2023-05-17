@@ -18,7 +18,8 @@ enum class EAgressiveMoveMode : uint8
 	None,
 	Slide,
 	RunOnWall,
-	Run
+	Run,
+	Climb
 };
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FReadActorDestroyed, AActor, OnDestroyed, AActor*, DestroyedActor);
 
@@ -48,7 +49,7 @@ class MOVEMENTPLUGIN_API UAgressiveMovementComponent : public UCharacterMovement
 	
 public:
 
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite,EditAnywhere)
 	bool Debug = true;
 
 	UPROPERTY(BlueprintReadOnly)
@@ -354,6 +355,52 @@ public:
 public:
 	//MoveOnWallEnd
 
+	//Parkor Start
+
+	UFUNCTION(BlueprintCallable)
+	void StartClimbInput();
+
+	UFUNCTION(BlueprintCallable)
+	void EndClimbInput();
+
+	UFUNCTION(BlueprintCallable, meta = (ToolTip = "BlueprintCallable for DEBUG, never use it"))
+	bool FindClimbeLeadge();
+
+	UFUNCTION()
+	bool CheckClimbByMeshPoligon();
+
+	UFUNCTION()
+	bool CheckInputClimb();
+
+	UPROPERTY(BlueprintReadOnly)
+	FHitResult WallInFrontClimbCheck;
+
+	UPROPERTY(BlueprintReadOnly)
+	FHitResult OptimalLeadge;
+
+	UPROPERTY(BlueprintReadWrite,EditAnywhere)
+	int TraceClimbNumber = 3;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float TraceClimbAngle = 30;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Same as LeadgeTraceSceneVectorDirect"))
+	USceneComponent* LeadgeTraceSceneComponentDirect;
+
+	UPROPERTY(EditAnywhere,BlueprintReadWrite,meta = (ToolTip = "Use for trace to find optimal Leadge, when LeadgeTraceSceneComponentDirect not valid"))
+	FVector LeadgeTraceLocalVectorDirect = {0,0,100};
+
+	UFUNCTION()
+	FVector GetLeadgeTraceDirect();
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float FindLeadgeTraceLength = 100;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float FindLeadgeTraceRadius = 100;
+
+	//ParkorEnd
+	
 	//SprintMode
 
 

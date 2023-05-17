@@ -193,6 +193,14 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	TickCalculateStamina(DeltaTime);
 	TraceForWalkChannel();
 	CheckActiveMoveMode();
+	if (Debug)
+	{
+		for (EAgressiveMoveMode MoveMode : AgressiveMoveMode)
+		{
+			FString LocalString = GetCharacterOwner()->GetName() + " " + UEnum::GetValueAsString(MoveMode);
+			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Green, LocalString);
+		}
+	}
 }
 
 void UAgressiveMovementComponent::BeginDestroy()
@@ -543,7 +551,8 @@ FVector UAgressiveMovementComponent::GetMoveToWallVector()
 		{
 			FVector ImpactNormal = HitResult.ImpactNormal;
 			ImpactNormal.Normalize();
-			if (UKismetMathLibrary::Dot_VectorVector(ImpactNormal, { 0,0,1 }) > MinDotAngleToRunOnWall)
+			double MaxFloorDot = 1.0 - UKismetMathLibrary::DegSin(GetWalkableFloorAngle());
+			if (UKismetMathLibrary::InRange_FloatFloat(UKismetMathLibrary::Dot_VectorVector(ImpactNormal, { 0,0,1 }), MaxFloorDot, MinDotAngleToRunOnWall))
 			{
 				if (MinDistance > UKismetMathLibrary::Vector_Distance(GetCharacterOwner()->GetActorLocation(), HitResult.ImpactPoint))
 				{
@@ -555,13 +564,13 @@ FVector UAgressiveMovementComponent::GetMoveToWallVector()
 	}
 	FVector ForwardVector = GetCharacterOwner()->GetActorForwardVector();
 	FRotator Rotator = UKismetMathLibrary::NormalizedDeltaRotator(UKismetMathLibrary::Conv_VectorToRotator(ForwardVector), UKismetMathLibrary::Conv_VectorToRotator(OptimalWall.ImpactNormal));
-	if (Rotator.Yaw > 0)
+	if (Rotator.Yaw < 0)
 	{
-		return UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 });
+		return UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 }) +(0,0,0.5);
 	}
 	else
 	{
-		return UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 })*-1;
+		return UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 })*-1 + (0, 0, 0.5);
 	}
 }
 
@@ -642,6 +651,16 @@ void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMo
 }
 
 
+void UAgressiveMovementComponent::StartClimbInput()
+{
+	AddNewAgressiveModeInput(EAgressiveMoveMode::Climb, 0);
+}
+
+void UAgressiveMovementComponent::EndClimbInput()
+{
+	RemoveAgressiveModeInput(EAgressiveMoveMode::Climb);
+}
+
 void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 {
 	Super::PhysFalling(deltaTime, Iterations);
@@ -673,5 +692,91 @@ void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 		RemoveMoveStatus(EAgressiveMoveMode::Slide);
 	};
 	PlayStepTick(deltaTime);
+}
+
+bool UAgressiveMovementComponent::FindClimbeLeadge()
+{
+	for (int Index = 0; Index < TraceClimbNumber; Index++)
+	{
+		FRotator Rotator = { 0,0,30 };
+		FVector LocalVector = Rotator.RotateVector(GetCharacterOwner()->GetActorForwardVector());
+		FHitResult HitResult;
+		GetWorld()->LineTraceSingleByChannel(HitResult, GetLeadgeTraceDirect(), GetLeadgeTraceDirect() + LocalVector * FindLeadgeTraceLength, ECollisionChannel::ECC_Visibility);
+		if (!HitResult.bBlockingHit)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UAgressiveMovementComponent::CheckInputClimb()
+{
+	FHitResult HitResult;
+	GetWorld()->LineTraceSingleByChannel(HitResult, GetLeadgeTraceDirect(), GetLeadgeTraceDirect() + GetCharacterOwner()->GetActorForwardVector() * FindLeadgeTraceLength, ECollisionChannel::ECC_Visibility);
+	if (HitResult.bBlockingHit)
+	{
+		WallInFrontClimbCheck = HitResult;
+		return true;
+	}
+	return false;
+}
+
+bool UAgressiveMovementComponent::CheckClimbByMeshPoligon()
+{
+	TArray<FHitResult> HitResults;
+	auto DebugTrace = [&]() {if (Debug) { return EDrawDebugTrace::ForOneFrame; }; return EDrawDebugTrace::None; };
+	const TArray<AActor*> ActorIgnore;
+	UStaticMeshComponent* StaticMeshComponent;
+	UKismetSystemLibrary::SphereTraceMulti(this, GetLeadgeTraceDirect(), GetLeadgeTraceDirect() + GetCharacterOwner()->GetActorForwardVector() * FindLeadgeTraceLength, FindLeadgeTraceRadius, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), HitResults, false);
+	for (FHitResult HitResult : HitResults)
+	{
+		AActor* Actor = HitResult.GetActor();
+		StaticMeshComponent = Cast<UStaticMeshComponent>(HitResult.Component);
+		int32 StartIndex = StaticMeshComponent->GetStaticMesh()->GetRenderData()->LODResources[0].Sections[0].FirstIndex;
+		FRawStaticIndexBuffer& StaticIndexBuffer = StaticMeshComponent->GetStaticMesh()->GetRenderData()->LODResources[0].IndexBuffer;
+		FPositionVertexBuffer& VertexBuffer = StaticMeshComponent->GetStaticMesh()->GetRenderData()->LODResources[0].VertexBuffers.PositionVertexBuffer;
+		int32 NumTriangles = StaticIndexBuffer.GetNumIndices() / 3;
+		TArray< TArray<FVector>> Triangles;
+		for (int32 i = 0; i < NumTriangles; i++)
+		{
+			int32 Index0 = StaticIndexBuffer.GetIndex(StartIndex + i * 3);
+			int32 Index1 = StaticIndexBuffer.GetIndex(StartIndex + i * 3 + 1);
+			int32 Index2 = StaticIndexBuffer.GetIndex(StartIndex + i * 3 + 2);
+
+			FVector3f Vertex0 = VertexBuffer.VertexPosition(Index0);
+			FVector3f Vertex1 = VertexBuffer.VertexPosition(Index1);
+			FVector3f Vertex2 = VertexBuffer.VertexPosition(Index2);
+
+			FVector Vertex0V = { Vertex0.X,Vertex0.Y,Vertex0.Z };
+			FVector Vertex1V = { Vertex1.X,Vertex1.Y,Vertex1.Z };
+			FVector Vertex2V = { Vertex2.X,Vertex2.Y,Vertex2.Z };
+			TArray<FVector> NewTriangle;
+			NewTriangle.Add(Vertex0V * StaticMeshComponent->GetComponentScale());
+			NewTriangle.Add(Vertex1V * StaticMeshComponent->GetComponentScale());
+			NewTriangle.Add(Vertex2V * StaticMeshComponent->GetComponentScale());
+			Triangles.Add(NewTriangle);
+			// Do something with the vertices...
+		}
+		if (Debug)
+		{
+			for (TArray<FVector> Triangle : Triangles)
+			{
+				UKismetSystemLibrary::DrawDebugPoint(this, Triangle[0] + StaticMeshComponent->GetComponentLocation(), 50.0, FLinearColor::Black, 5.0);
+				UKismetSystemLibrary::DrawDebugPoint(this, Triangle[1] + StaticMeshComponent->GetComponentLocation(), 50.0, FLinearColor::Black, 5.0);
+				UKismetSystemLibrary::DrawDebugPoint(this, Triangle[2] + StaticMeshComponent->GetComponentLocation(), 50.0, FLinearColor::Black, 5.0);
+			}
+		}
+	}
+	return false;
+}
+
+FVector UAgressiveMovementComponent::GetLeadgeTraceDirect()
+{
+	if (LeadgeTraceSceneComponentDirect)
+	{
+		return LeadgeTraceSceneComponentDirect->GetComponentLocation();
+	}
+	return GetCharacterOwner()->GetActorLocation() + LeadgeTraceLocalVectorDirect;
 }
 
