@@ -22,7 +22,7 @@ UAgressiveMovementComponent::UAgressiveMovementComponent()
 
 void UAgressiveMovementComponent::CheckActiveMoveMode()
 {
-	for (int count = 0; count<NotActiveAgressiveMoveMode.Num();count++)
+	for (int count = 0; count < NotActiveAgressiveMoveMode.Num(); count++)
 	{
 		FAgressiveMoveModeByPriority LocalAgressiveMoveMode = NotActiveAgressiveMoveMode[count];
 		switch (LocalAgressiveMoveMode.AgressiveMoveMode)
@@ -47,12 +47,25 @@ void UAgressiveMovementComponent::CheckActiveMoveMode()
 			}
 		}
 		case EAgressiveMoveMode::RunOnWall:
-			if ((MovementMode == EMovementMode::MOVE_Falling)&&TraceSucsess)
+		{
+			if ((MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess)
 			{
 				AddMoveStatus(EAgressiveMoveMode::RunOnWall);
 				count--;
 			}
 			break;
+		}
+
+		case EAgressiveMoveMode::Climb:
+		{
+			if ((MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess && CheckInputClimb())
+			{
+				AddMoveStatus(EAgressiveMoveMode::Climb);
+				count--;
+			}
+			break;
+		};
+		break;
 		}
 	}
 }
@@ -144,6 +157,9 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 			RemoveMoveStatus(EAgressiveMoveMode::Slide);
 			StartRun();
 			break;
+		case EAgressiveMoveMode::Climb:
+			SetMovementMode(MOVE_None);
+			break;
 		default:
 			break;
 		}
@@ -169,6 +185,8 @@ void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode RemoveAgre
 		case EAgressiveMoveMode::Run:
 			EndRun();
 			break;
+		case EAgressiveMoveMode::Climb:
+			SetMovementMode(MOVE_Falling);
 		default:
 			break;
 		}
@@ -185,6 +203,15 @@ void UAgressiveMovementComponent::BeginPlay()
 	DefaultCharacterSize = GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 	DefaultMaxAcceleration = MaxAcceleration;
 	DefaultMaxWalkSpeed = MaxWalkSpeed;
+	for (TSubclassOf<UTrickObject> LClassTrickObject : StartTrickObjects)
+	{
+		UTrickObject* LNewTrickObject = NewObject<UTrickObject>(this, LClassTrickObject);
+		TrickObjects.Add(LNewTrickObject);
+		if (Cast<UClimbTrickObject>(LNewTrickObject))
+		{
+			ClimbTrickObjects.Add(Cast<UClimbTrickObject>(LNewTrickObject));
+		}
+	}
 }
 
 void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -503,7 +530,7 @@ void UAgressiveMovementComponent::TraceForWalkChannel()
 	}
 
 	WallTraceHitResults = HitResults;
-	TraceSucsess = !WallTraceHitResults.IsEmpty();
+	TraceSphereSucsess = !WallTraceHitResults.IsEmpty();
 }
 FVector UAgressiveMovementComponent::GetJumpFromWallVector()
 {
@@ -615,7 +642,7 @@ void UAgressiveMovementComponent::LowStaminaEndRunOnWall()
 
 void UAgressiveMovementComponent::CheckVelocityMoveOnWall()
 {
-	if (GetCharacterOwner()->GetVelocity().Length() < MinMoveOnWallVelocity)
+	if (GetCharacterOwner()->GetVelocity().Length() < MinMoveOnWallVelocity || ConsumeInputVector().Length()==0.0)
 	{
 		RemoveMoveStatus(EAgressiveMoveMode::RunOnWall);
 	}
@@ -694,22 +721,6 @@ void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 	PlayStepTick(deltaTime);
 }
 
-bool UAgressiveMovementComponent::FindClimbeLeadge()
-{
-	for (int Index = 0; Index < TraceClimbNumber; Index++)
-	{
-		FRotator Rotator = { 0,0,30 };
-		FVector LocalVector = Rotator.RotateVector(GetCharacterOwner()->GetActorForwardVector());
-		FHitResult HitResult;
-		GetWorld()->LineTraceSingleByChannel(HitResult, GetLeadgeTraceDirect(), GetLeadgeTraceDirect() + LocalVector * FindLeadgeTraceLength, ECollisionChannel::ECC_Visibility);
-		if (!HitResult.bBlockingHit)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
 bool UAgressiveMovementComponent::CheckInputClimb()
 {
 	FHitResult HitResult;
@@ -722,17 +733,74 @@ bool UAgressiveMovementComponent::CheckInputClimb()
 	return false;
 }
 
-bool UAgressiveMovementComponent::CheckClimbByMeshPoligon()
+
+bool UAgressiveMovementComponent::FindClimbeLeadge()
+{
+	OptimalLeadge = FHitResult();
+	TArray<FHitResult> HitResults;
+	FindClimbByTrace(HitResults);
+	if (!(HitResults.Num() > 0))
+	{
+		FindClimbByMeshPoligon(HitResults);
+	}
+	if (HitResults.Num() > 0)
+	{
+		float LMinDot = 100000;
+		FHitResult LAnswerHitResult;
+		for (FHitResult HitResult : HitResults)
+		{
+			if (LMinDot < FVector::DotProduct(HitResult.ImpactNormal, GetOptimalClimbVectorDirection()))
+			{
+				LMinDot = FVector::DotProduct(HitResult.ImpactNormal, GetOptimalClimbVectorDirection());
+			};
+			LAnswerHitResult = HitResult;
+		}
+		OptimalLeadge = LAnswerHitResult;
+		return true;
+	}
+	return false;
+}
+
+
+bool UAgressiveMovementComponent::FindClimbByTrace(TArray<FHitResult>& OptimalResults)
+{
+	for (int Index = 0; Index < TraceClimbNumber; Index++)
+	{
+		FRotator LRotator = { 0,0,TraceClimbAngle };
+		FVector LocalVector = LRotator.RotateVector(GetCharacterOwner()->GetActorForwardVector());
+		FHitResult LHitResult;
+		GetWorld()->LineTraceSingleByChannel(LHitResult, GetLeadgeTraceDirect(), GetLeadgeTraceDirect() + LocalVector * FindLeadgeTraceLength, ECollisionChannel::ECC_Visibility);
+		if (!LHitResult.bBlockingHit)
+		{
+			GetWorld()->LineTraceSingleByChannel(LHitResult, GetLeadgeTraceDirect() + LocalVector * FindLeadgeTraceLength, GetLeadgeTraceDirect() + LocalVector * FindLeadgeTraceLength - (0,0,30), ECollisionChannel::ECC_Visibility);
+		}
+		if (LHitResult.bBlockingHit)
+		{
+			float Length = FVector::Distance(LHitResult.ImpactPoint, WallInFrontClimbCheck.Location);
+			if (MinDIstanceDepthToClimb < Length)
+			{
+				if (FVector::DotProduct(LHitResult.ImpactNormal, { 0,0,1 }) > MinDotAngleForClimb)
+				{
+					OptimalResults.Add(LHitResult);
+				};
+			}
+		}
+	}
+	return false;
+}
+
+
+bool UAgressiveMovementComponent::FindClimbByMeshPoligon(TArray<FHitResult>& OptimalResults)
 {
 	TArray<FHitResult> HitResults;
 	auto DebugTrace = [&]() {if (Debug) { return EDrawDebugTrace::ForOneFrame; }; return EDrawDebugTrace::None; };
 	const TArray<AActor*> ActorIgnore;
 	UStaticMeshComponent* StaticMeshComponent;
 	UKismetSystemLibrary::SphereTraceMulti(this, GetLeadgeTraceDirect(), GetLeadgeTraceDirect() + GetCharacterOwner()->GetActorForwardVector() * FindLeadgeTraceLength, FindLeadgeTraceRadius, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), HitResults, false);
-	for (FHitResult HitResult : HitResults)
+	for (FHitResult LHitResult : HitResults)
 	{
-		AActor* Actor = HitResult.GetActor();
-		StaticMeshComponent = Cast<UStaticMeshComponent>(HitResult.Component);
+		AActor* Actor = LHitResult.GetActor();
+		StaticMeshComponent = Cast<UStaticMeshComponent>(LHitResult.Component);
 		int32 StartIndex = StaticMeshComponent->GetStaticMesh()->GetRenderData()->LODResources[0].Sections[0].FirstIndex;
 		FRawStaticIndexBuffer& StaticIndexBuffer = StaticMeshComponent->GetStaticMesh()->GetRenderData()->LODResources[0].IndexBuffer;
 		FPositionVertexBuffer& VertexBuffer = StaticMeshComponent->GetStaticMesh()->GetRenderData()->LODResources[0].VertexBuffers.PositionVertexBuffer;
@@ -755,6 +823,11 @@ bool UAgressiveMovementComponent::CheckClimbByMeshPoligon()
 			NewTriangle.Add(Vertex0V * StaticMeshComponent->GetComponentScale());
 			NewTriangle.Add(Vertex1V * StaticMeshComponent->GetComponentScale());
 			NewTriangle.Add(Vertex2V * StaticMeshComponent->GetComponentScale());
+			FVector LEdge1 = Vertex1V - Vertex0V;
+			FVector LEdge2 = Vertex2V - Vertex0V;
+
+			FVector Normal = FVector::CrossProduct(LEdge1, LEdge2).GetSafeNormal();
+			NewTriangle.Add(Normal);
 			Triangles.Add(NewTriangle);
 			// Do something with the vertices...
 		}
@@ -765,6 +838,18 @@ bool UAgressiveMovementComponent::CheckClimbByMeshPoligon()
 				UKismetSystemLibrary::DrawDebugPoint(this, Triangle[0] + StaticMeshComponent->GetComponentLocation(), 50.0, FLinearColor::Black, 5.0);
 				UKismetSystemLibrary::DrawDebugPoint(this, Triangle[1] + StaticMeshComponent->GetComponentLocation(), 50.0, FLinearColor::Black, 5.0);
 				UKismetSystemLibrary::DrawDebugPoint(this, Triangle[2] + StaticMeshComponent->GetComponentLocation(), 50.0, FLinearColor::Black, 5.0);
+			}
+		}
+		for (TArray<FVector> Triangle : Triangles)
+		{
+			FVector LCheckVector = (Triangle[0] + Triangle[1] + Triangle[2] / 3);
+			if (FVector::Distance(LCheckVector, GetLeadgeTraceDirect()) < FindLeadgeTraceRadius && FVector::DotProduct(Triangle[4], { 0,0,1 }) > MinDotAngleForClimb)
+			{
+				FHitResult LNewHitResult;
+				LNewHitResult = LHitResult;
+				LNewHitResult.ImpactPoint = LCheckVector;
+				LNewHitResult.Location = LCheckVector;
+				OptimalResults.Add(LNewHitResult);
 			}
 		}
 	}
@@ -780,3 +865,32 @@ FVector UAgressiveMovementComponent::GetLeadgeTraceDirect()
 	return GetCharacterOwner()->GetActorLocation() + LeadgeTraceLocalVectorDirect;
 }
 
+FVector UAgressiveMovementComponent::GetOptimalClimbVectorDirection()
+{
+	if(DirectionalClimbVector.Length() == 0)
+	{
+		return GetCharacterOwner()->GetViewRotation().Vector();
+	}
+	return DirectionalClimbVector;
+}
+
+bool UTrickObject::CheckTrickEnable()
+{
+	return false;
+}
+
+void UTrickObject::UseTrick()
+{
+}
+
+bool UClimbTrickObject::CheckTrickEnable()
+{
+	if (MainComponent->AgressiveMoveMode.Find(EAgressiveMoveMode::Climb))
+	{
+		return true;
+	}
+}
+
+void UClimbTrickObject::UseTrick()
+{
+}

@@ -11,6 +11,33 @@
 /**
  * 
  */
+UCLASS(Blueprintable)
+class MOVEMENTPLUGIN_API UTrickObject : public UObject
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(BlueprintReadOnly)
+	UAgressiveMovementComponent* MainComponent;
+
+	UFUNCTION(BlueprintNativeEvent)
+	virtual bool CheckTrickEnable();
+
+	UFUNCTION(BlueprintNativeEvent)
+	virtual void UseTrick();
+
+};
+
+UCLASS(Blueprintable)
+class MOVEMENTPLUGIN_API UClimbTrickObject : public UTrickObject
+{
+	GENERATED_BODY()
+public:
+	virtual bool CheckTrickEnable();
+
+	virtual void UseTrick();
+
+};
+
 
 UENUM(Blueprintable)
 enum class EAgressiveMoveMode : uint8
@@ -118,6 +145,13 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void RemoveMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode);
+
+	//Trick
+	UPROPERTY(BlueprintReadOnly, EditAnywhere)
+	TSubclassOf<UTrickObject> StartTrickObjects;
+
+	UPROPERTY(BlueprintReadWrite)
+	TArray<UTrickObject*> TrickObjects;
 
 	//SpeedStart
 	UPROPERTY(BlueprintReadOnly)
@@ -274,7 +308,7 @@ public:
 	TArray<FHitResult> WallTraceHitResults;
 
 	UPROPERTY(BlueprintReadOnly)
-	bool TraceSucsess = false;
+	bool TraceSphereSucsess = false;
 
 	//JumpFromWallStart
 
@@ -367,7 +401,10 @@ public:
 	bool FindClimbeLeadge();
 
 	UFUNCTION()
-	bool CheckClimbByMeshPoligon();
+	bool FindClimbByTrace(TArray<FHitResult>& OptimalResults);
+
+	UFUNCTION()
+	bool FindClimbByMeshPoligon(TArray<FHitResult>& OptimalResults);
 
 	UFUNCTION()
 	bool CheckInputClimb();
@@ -384,6 +421,15 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float TraceClimbAngle = 30;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float MinDotAngleForClimb = 0.5;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float MinDIstanceDepthToClimb = 10;
+
+	UPROPERTY(BlueprintReadWrite)
+	FVector DirectionalClimbVector = { 0, 0, 0 };
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ToolTip = "Same as LeadgeTraceSceneVectorDirect"))
 	USceneComponent* LeadgeTraceSceneComponentDirect;
 
@@ -392,6 +438,12 @@ public:
 
 	UFUNCTION()
 	FVector GetLeadgeTraceDirect();
+
+	UPROPERTY(BlueprintReadWrite)
+	TArray<UClimbTrickObject*> ClimbTrickObjects;
+
+	UFUNCTION()
+	FVector GetOptimalClimbVectorDirection();
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float FindLeadgeTraceLength = 100;
