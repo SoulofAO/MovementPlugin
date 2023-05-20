@@ -14,6 +14,29 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFinishTrick, UTrickObject*, FinisherTrickObject);
 
+
+UCLASS(Blueprintable)
+class MOVEMENTPLUGIN_API UDinamicCameraManager : public UObject
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(BlueprintReadOnly)
+	UAgressiveMovementComponent* MovementComponent;
+
+	UPROPERTY(BlueprintReadWrite)
+	FRotator ApplyRotator;
+
+	UFUNCTION(BlueprintNativeEvent)
+	void ApplyCamera();
+
+	virtual void ApplyCamera_Implementation();
+
+	UFUNCTION(BlueprintNativeEvent)
+	FRotator CalculateApplyRotator(float DeltaTime);
+
+	virtual FRotator CalculateApplyRotator_Implementation(float DeltaTime);
+};
+
 UCLASS(Blueprintable)
 class MOVEMENTPLUGIN_API UTrickObject : public UObject
 {
@@ -183,10 +206,12 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void RemoveAllMoveStatus(bool SendToInput = true);
+	//End Core
 
 	//Trick
+
 	UPROPERTY(BlueprintReadOnly, EditAnywhere)
-	TArray<TSubclassOf<UTrickObject>> StartTrickObjects;
+	TArray<TSubclassOf<UTrickObject>> StartTrickObjects = { UCrossbarJumpTrickObject::StaticClass() };
 
 	UPROPERTY(BlueprintReadWrite)
 	TArray<UTrickObject*> TrickObjects;
@@ -196,6 +221,11 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 	UTrickObject* ExecutedTrick;
+
+	UFUNCTION()
+	void TrickEnd(UTrickObject* FinisherTrickObject);
+
+	//TrickEnd
 
 	//SpeedStart
 	UPROPERTY(BlueprintReadOnly)

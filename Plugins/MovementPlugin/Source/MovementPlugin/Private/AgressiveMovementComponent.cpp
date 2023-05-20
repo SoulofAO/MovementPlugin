@@ -240,11 +240,17 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		}
 	}
 	UTrickObject* LTrick = GetEnableTrick();
-	if (LTrick)
+	if (LTrick&&!ExecutedTrick)
 	{
 		ExecutedTrick = LTrick;
+		ExecutedTrick->FinishTrickDelegate.AddDynamic(this, &UAgressiveMovementComponent::TrickEnd);
 		LTrick->UseTrick();
 	}
+}
+void UAgressiveMovementComponent::TrickEnd(UTrickObject* FinisherTrickObject)
+{
+	ExecutedTrick->FinishTrickDelegate.RemoveDynamic(this, &UAgressiveMovementComponent::TrickEnd);
+	ExecutedTrick = nullptr;
 }
 
 void UAgressiveMovementComponent::BeginDestroy()
@@ -304,11 +310,11 @@ void UAgressiveMovementComponent::LowStaminaEndRun()
 
 UTrickObject* UAgressiveMovementComponent::GetEnableTrick()
 {
-	for (UTrickObject* TrickObject : TrickObjects)
+	for (UTrickObject* LTrickObject : TrickObjects)
 	{
-		if (TrickObject->CheckTrickEnable())
+		if (LTrickObject->CheckTrickEnable())
 		{
-			return TrickObject;
+			return LTrickObject;
 		}
 	}
 	return nullptr;
@@ -766,7 +772,7 @@ bool UAgressiveMovementComponent::CheckInputClimb()
 	if (HitResult.bBlockingHit)
 	{
 		WallInFrontClimbCheck = HitResult;
-		return true;
+		return FindClimbeLeadge();
 	}
 	return false;
 }
@@ -942,10 +948,12 @@ bool UCrossbarJumpTrickObject::CheckTrickEnable_Implementation()
 		auto DebugTrace = [&]() {if (MovementComponent->Debug) { return EDrawDebugTrace::ForOneFrame; }; return EDrawDebugTrace::None; };
 		const TArray<AActor*> ActorIgnore;
 		UKismetSystemLibrary::SphereTraceMulti(MovementComponent->GetCharacterOwner(), MovementComponent->GetCharacterOwner()->GetActorLocation(), MovementComponent->GetCharacterOwner()->GetActorLocation() + MovementComponent->GetCharacterOwner()->GetActorForwardVector() * TraceRadiusForward, TraceRadiusForward, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), HitResults, false);
-		if (HitResults.Num() == 0)
+		if (HitResults.Num() > 0)
 		{
+			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Blue, HitResults[0].GetActor()->GetName());
 			return true;
 		}
+
 	}
 	return false;
 }
@@ -966,3 +974,11 @@ void UCrossbarJumpTrickObject::UseTrick_Implementation()
 	FinishTrickDelegate.Broadcast(this);
 }
 
+void UDinamicCameraManager::ApplyCamera_Implementation()
+{
+}
+
+FRotator UDinamicCameraManager::CalculateApplyRotator_Implementation(float DeltaTime)
+{
+	return FRotator(0,0,1)* DeltaTime;
+}
