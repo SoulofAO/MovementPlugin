@@ -11,6 +11,9 @@
 /**
  * 
  */
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFinishTrick, UTrickObject*, FinisherTrickObject);
+
 UCLASS(Blueprintable)
 class MOVEMENTPLUGIN_API UTrickObject : public UObject
 {
@@ -29,6 +32,8 @@ public:
 
 	virtual void UseTrick_Implementation();
 
+	UPROPERTY(BlueprintCallable, meta = (ToolTip = "Call when want end Trick"))
+	FFinishTrick FinishTrickDelegate;
 };
 
 UCLASS(Blueprintable)
@@ -188,6 +193,9 @@ public:
 
 	UFUNCTION()
 	UTrickObject* GetEnableTrick();
+
+	UPROPERTY(BlueprintReadOnly)
+	UTrickObject* ExecutedTrick;
 
 	//SpeedStart
 	UPROPERTY(BlueprintReadOnly)

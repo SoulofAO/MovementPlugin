@@ -242,6 +242,7 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	UTrickObject* LTrick = GetEnableTrick();
 	if (LTrick)
 	{
+		ExecutedTrick = LTrick;
 		LTrick->UseTrick();
 	}
 }
@@ -935,13 +936,16 @@ void UClimbTrickObject::UseTrick_Implementation()
 
 bool UCrossbarJumpTrickObject::CheckTrickEnable_Implementation()
 {
-	TArray<FHitResult> HitResults;
-	auto DebugTrace = [&]() {if (MovementComponent->Debug) { return EDrawDebugTrace::ForOneFrame; }; return EDrawDebugTrace::None; };
-	const TArray<AActor*> ActorIgnore;
-	UKismetSystemLibrary::SphereTraceMulti(MovementComponent->GetCharacterOwner(), MovementComponent->GetCharacterOwner()->GetActorLocation(), MovementComponent->GetCharacterOwner()->GetActorLocation()+ MovementComponent->GetCharacterOwner()->GetActorForwardVector() * TraceRadiusForward, TraceRadiusForward, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), HitResults, false);
-	if (HitResults.Num() == 0)
+	if(Super::CheckTrickEnable_Implementation())
 	{
-		return true;
+		TArray<FHitResult> HitResults;
+		auto DebugTrace = [&]() {if (MovementComponent->Debug) { return EDrawDebugTrace::ForOneFrame; }; return EDrawDebugTrace::None; };
+		const TArray<AActor*> ActorIgnore;
+		UKismetSystemLibrary::SphereTraceMulti(MovementComponent->GetCharacterOwner(), MovementComponent->GetCharacterOwner()->GetActorLocation(), MovementComponent->GetCharacterOwner()->GetActorLocation() + MovementComponent->GetCharacterOwner()->GetActorForwardVector() * TraceRadiusForward, TraceRadiusForward, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), HitResults, false);
+		if (HitResults.Num() == 0)
+		{
+			return true;
+		}
 	}
 	return false;
 }
@@ -959,5 +963,6 @@ void UCrossbarJumpTrickObject::UseTrick_Implementation()
 		LStrength = DirectStrength;
 	}
 	MovementComponent->Launch(LCharacter->GetActorForwardVector()*LStrength);
+	FinishTrickDelegate.Broadcast(this);
 }
 
