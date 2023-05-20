@@ -158,7 +158,8 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 			StartRun();
 			break;
 		case EAgressiveMoveMode::Climb:
-			SetMovementMode(MOVE_None);
+			RemoveAllMoveStatus();
+			StartClimb();
 			break;
 		default:
 			break;
@@ -166,7 +167,7 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 	}
 }
 
-void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode RemoveAgressiveMoveMode)
+void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode RemoveAgressiveMoveMode, bool SendToInput)
 {
 	TArray<EAgressiveMoveMode> OldAgressiveMode = AgressiveMoveMode;
 
@@ -186,7 +187,7 @@ void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode RemoveAgre
 			EndRun();
 			break;
 		case EAgressiveMoveMode::Climb:
-			SetMovementMode(MOVE_Falling);
+			EndClimb();
 		default:
 			break;
 		}
@@ -195,6 +196,15 @@ void UAgressiveMovementComponent::RemoveMoveStatus(EAgressiveMoveMode RemoveAgre
 	AgressiveMoveMode.Remove(RemoveAgressiveMoveMode);
 
 }
+
+void UAgressiveMovementComponent::RemoveAllMoveStatus(bool SendToInput)
+{
+	TArray<EAgressiveMoveMode> LOldAgressiveMode = AgressiveMoveMode;
+	for (EAgressiveMoveMode LMoveMode : LOldAgressiveMode)
+	{
+		RemoveMoveStatus(LMoveMode, SendToInput);
+	}
+};
 
 void UAgressiveMovementComponent::BeginPlay()
 {
@@ -206,6 +216,7 @@ void UAgressiveMovementComponent::BeginPlay()
 	for (TSubclassOf<UTrickObject> LClassTrickObject : StartTrickObjects)
 	{
 		UTrickObject* LNewTrickObject = NewObject<UTrickObject>(this, LClassTrickObject);
+		LNewTrickObject->MovementComponent = this;
 		TrickObjects.Add(LNewTrickObject);
 		if (Cast<UClimbTrickObject>(LNewTrickObject))
 		{
@@ -227,6 +238,11 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			FString LocalString = GetCharacterOwner()->GetName() + " " + UEnum::GetValueAsString(MoveMode);
 			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Green, LocalString);
 		}
+	}
+	UTrickObject* LTrick = GetEnableTrick();
+	if (LTrick)
+	{
+		LTrick->UseTrick();
 	}
 }
 
@@ -283,6 +299,18 @@ void UAgressiveMovementComponent::EndRunInput()
 void UAgressiveMovementComponent::LowStaminaEndRun()
 {
 	RemoveMoveStatus(EAgressiveMoveMode::Run);
+}
+
+UTrickObject* UAgressiveMovementComponent::GetEnableTrick()
+{
+	for (UTrickObject* TrickObject : TrickObjects)
+	{
+		if (TrickObject->CheckTrickEnable())
+		{
+			return TrickObject;
+		}
+	}
+	return nullptr;
 }
 
 void UAgressiveMovementComponent::AddStaminaModificator(float Value, FString Name)
@@ -677,6 +705,15 @@ void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMo
 	};
 }
 
+void UAgressiveMovementComponent::StartClimb()
+{
+	SetMovementMode(MOVE_None);
+}
+
+void UAgressiveMovementComponent::EndClimb()
+{
+	SetMovementMode(MOVE_Falling);
+}
 
 void UAgressiveMovementComponent::StartClimbInput()
 {
@@ -874,23 +911,53 @@ FVector UAgressiveMovementComponent::GetOptimalClimbVectorDirection()
 	return DirectionalClimbVector;
 }
 
-bool UTrickObject::CheckTrickEnable()
+bool UTrickObject::CheckTrickEnable_Implementation()
 {
 	return false;
 }
 
-void UTrickObject::UseTrick()
+void UTrickObject::UseTrick_Implementation()
 {
 }
 
-bool UClimbTrickObject::CheckTrickEnable()
+bool UClimbTrickObject::CheckTrickEnable_Implementation()
 {
-	if (MainComponent->AgressiveMoveMode.Find(EAgressiveMoveMode::Climb))
+	if (MovementComponent->AgressiveMoveMode.Find(EAgressiveMoveMode::Climb))
 	{
 		return true;
 	}
+	return false;
 }
 
-void UClimbTrickObject::UseTrick()
+void UClimbTrickObject::UseTrick_Implementation()
 {
 }
+
+bool UCrossbarJumpTrickObject::CheckTrickEnable_Implementation()
+{
+	TArray<FHitResult> HitResults;
+	auto DebugTrace = [&]() {if (MovementComponent->Debug) { return EDrawDebugTrace::ForOneFrame; }; return EDrawDebugTrace::None; };
+	const TArray<AActor*> ActorIgnore;
+	UKismetSystemLibrary::SphereTraceMulti(MovementComponent->GetCharacterOwner(), MovementComponent->GetCharacterOwner()->GetActorLocation(), MovementComponent->GetCharacterOwner()->GetActorLocation()+ MovementComponent->GetCharacterOwner()->GetActorForwardVector() * TraceRadiusForward, TraceRadiusForward, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), HitResults, false);
+	if (HitResults.Num() == 0)
+	{
+		return true;
+	}
+	return false;
+}
+
+void UCrossbarJumpTrickObject::UseTrick_Implementation()
+{
+	ACharacter* LCharacter = MovementComponent->GetCharacterOwner();
+	float LStrength = 0.0;
+	if (ApplyStrengthAsVelocity)
+	{
+		LStrength = MovementComponent->Velocity.Length();
+	}
+	else
+	{
+		LStrength = DirectStrength;
+	}
+	MovementComponent->Launch(LCharacter->GetActorForwardVector()*LStrength);
+}
+

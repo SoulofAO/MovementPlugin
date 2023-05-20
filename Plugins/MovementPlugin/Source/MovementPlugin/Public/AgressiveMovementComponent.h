@@ -17,13 +17,17 @@ class MOVEMENTPLUGIN_API UTrickObject : public UObject
 	GENERATED_BODY()
 public:
 	UPROPERTY(BlueprintReadOnly)
-	UAgressiveMovementComponent* MainComponent;
+	UAgressiveMovementComponent* MovementComponent;
 
 	UFUNCTION(BlueprintNativeEvent)
-	virtual bool CheckTrickEnable();
+	bool CheckTrickEnable();
+
+	virtual bool CheckTrickEnable_Implementation();
 
 	UFUNCTION(BlueprintNativeEvent)
-	virtual void UseTrick();
+	void UseTrick();
+
+	virtual void UseTrick_Implementation();
 
 };
 
@@ -32,11 +36,37 @@ class MOVEMENTPLUGIN_API UClimbTrickObject : public UTrickObject
 {
 	GENERATED_BODY()
 public:
-	virtual bool CheckTrickEnable();
+	virtual bool CheckTrickEnable_Implementation();
 
-	virtual void UseTrick();
+	virtual void UseTrick_Implementation();
 
 };
+
+
+UCLASS(Blueprintable)
+class MOVEMENTPLUGIN_API UCrossbarJumpTrickObject : public UClimbTrickObject
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintReadWrite,EditInstanceOnly)
+	float TraceRadiusForward = 40;
+
+	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
+	float TraceLengthForward = 100;
+
+	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
+	float DirectStrength = 0;
+
+	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
+	bool ApplyStrengthAsVelocity = true;
+
+	virtual bool CheckTrickEnable_Implementation();
+
+	virtual void UseTrick_Implementation();
+
+};
+
 
 
 UENUM(Blueprintable)
@@ -144,14 +174,20 @@ public:
 	void AddMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode);
 
 	UFUNCTION(BlueprintCallable)
-	void RemoveMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode);
+	void RemoveMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode, bool SendToInput = true);
+
+	UFUNCTION(BlueprintCallable)
+	void RemoveAllMoveStatus(bool SendToInput = true);
 
 	//Trick
 	UPROPERTY(BlueprintReadOnly, EditAnywhere)
-	TSubclassOf<UTrickObject> StartTrickObjects;
+	TArray<TSubclassOf<UTrickObject>> StartTrickObjects;
 
 	UPROPERTY(BlueprintReadWrite)
 	TArray<UTrickObject*> TrickObjects;
+
+	UFUNCTION()
+	UTrickObject* GetEnableTrick();
 
 	//SpeedStart
 	UPROPERTY(BlueprintReadOnly)
@@ -394,8 +430,14 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void StartClimbInput();
 
+	UFUNCTION()
+	void StartClimb();
+
 	UFUNCTION(BlueprintCallable)
 	void EndClimbInput();
+
+	UFUNCTION()
+	void EndClimb();
 
 	UFUNCTION(BlueprintCallable, meta = (ToolTip = "BlueprintCallable for DEBUG, never use it"))
 	bool FindClimbeLeadge();
