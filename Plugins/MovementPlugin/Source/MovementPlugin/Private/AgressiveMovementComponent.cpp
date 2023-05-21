@@ -43,8 +43,8 @@ void UAgressiveMovementComponent::CheckActiveMoveMode()
 			{
 				AddMoveStatus(EAgressiveMoveMode::Slide);
 				count--;
-				break;
 			}
+			break; 
 		}
 		case EAgressiveMoveMode::RunOnWall:
 		{
@@ -146,7 +146,7 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 			RemoveMoveStatus(EAgressiveMoveMode::Run);
 			if (AgressiveMoveMode.Contains(EAgressiveMoveMode::RunOnWall))
 			{
-				EndRunOnWall();
+				RemoveMoveStatus(EAgressiveMoveMode::RunOnWall);
 			}
 			StartSlide();
 			break;
@@ -246,6 +246,10 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		ExecutedTrick->FinishTrickDelegate.AddDynamic(this, &UAgressiveMovementComponent::TrickEnd);
 		LTrick->UseTrick();
 	}
+	if (ExecutedTrick)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Blue, ExecutedTrick->GetName());
+	}
 }
 void UAgressiveMovementComponent::TrickEnd(UTrickObject* FinisherTrickObject)
 {
@@ -322,6 +326,10 @@ UTrickObject* UAgressiveMovementComponent::GetEnableTrick()
 
 void UAgressiveMovementComponent::AddStaminaModificator(float Value, FString Name)
 {
+	if (StaminaModificator->FindModificator(Name))
+	{
+		RemoveStaminaModificator(Name, true);
+	}
 	UFloatModificator* FloatModificator = StaminaModificator->CreateNewModificator();
 	FloatModificator->SelfValue = Value;
 	FloatModificator->OperationType = EModificatorOperation::Add;
@@ -347,7 +355,7 @@ void UAgressiveMovementComponent::AddStaminaModificator(float Value, FString Nam
 	}
 }
 
-void UAgressiveMovementComponent::RemoveStaminaModificator(FString Name)
+void UAgressiveMovementComponent::RemoveStaminaModificator(FString Name, bool Force)
 {
 	StaminaModificator->RemoveModificatorByName(Name);
 	if (RemoveStaminaBaseAddWhenSpendStamina)
@@ -366,7 +374,10 @@ void UAgressiveMovementComponent::RemoveStaminaModificator(FString Name)
 			}
 			if (!HasSubstractModificator)
 			{
-				AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
+				if (!Force)
+				{
+					AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
+				}
 			}
 		}
 	}
@@ -593,6 +604,14 @@ void UAgressiveMovementComponent::JumpFromWall()
 				TakeStamina(TakenJumpFromWallStamina);
 				Launch(Velocity + JumpVector);
 				GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, this, &UAgressiveMovementComponent::ReloadJump, TimeReloadJumpFromWall, false);
+				RemoveAllMoveStatus();
+			}
+			else
+			{
+				if (CanDoubleJump && EnableDoubleJump)
+				{
+					JumpInSky();
+				}
 			}
 		}
 	}
@@ -601,6 +620,21 @@ void UAgressiveMovementComponent::JumpFromWall()
 void UAgressiveMovementComponent::ReloadJump()
 {
 	ReloadJumpTimeHandle.Invalidate();
+}
+
+void UAgressiveMovementComponent::ReloadDoubleJump()
+{
+	CanDoubleJump = true;
+}
+
+void UAgressiveMovementComponent::JumpInSky()
+{
+	CanDoubleJump = false;
+	TakeStamina(TakenJumpFromWallStamina);
+	FVector LLaunchVector = { Velocity.X,Velocity.Y, StrengthJumpFromWall };
+ 	Launch(LLaunchVector);
+	GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, this, &UAgressiveMovementComponent::ReloadJump, TimeReloadJumpFromWall, false);
+	RemoveAllMoveStatus();
 }
 
 FVector UAgressiveMovementComponent::GetMoveToWallVector()
@@ -614,7 +648,7 @@ FVector UAgressiveMovementComponent::GetMoveToWallVector()
 			FVector ImpactNormal = HitResult.ImpactNormal;
 			ImpactNormal.Normalize();
 			double MaxFloorDot = 1.0 - UKismetMathLibrary::DegSin(GetWalkableFloorAngle());
-			if (UKismetMathLibrary::InRange_FloatFloat(UKismetMathLibrary::Dot_VectorVector(ImpactNormal, { 0,0,1 }), MaxFloorDot, MinDotAngleToRunOnWall))
+			if (UKismetMathLibrary::InRange_FloatFloat(UKismetMathLibrary::Dot_VectorVector(ImpactNormal, { 0,0,1 }), MinDotAngleToRunOnWall, MaxFloorDot))
 			{
 				if (MinDistance > UKismetMathLibrary::Vector_Distance(GetCharacterOwner()->GetActorLocation(), HitResult.ImpactPoint))
 				{
@@ -626,18 +660,25 @@ FVector UAgressiveMovementComponent::GetMoveToWallVector()
 	}
 	FVector ForwardVector = GetCharacterOwner()->GetActorForwardVector();
 	FRotator Rotator = UKismetMathLibrary::NormalizedDeltaRotator(UKismetMathLibrary::Conv_VectorToRotator(ForwardVector), UKismetMathLibrary::Conv_VectorToRotator(OptimalWall.ImpactNormal));
+	FVector VectorToMove = UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 });
+	FVector AppendVector = UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, VectorToMove).GetAbs()* 0.5;
 	if (Rotator.Yaw < 0)
 	{
-		return UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 }) +(0,0,0.5);
+		return VectorToMove + AppendVector;
 	}
 	else
 	{
-		return UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 })*-1 + (0, 0, 0.5);
+		return VectorToMove*-1 + AppendVector;
 	}
 }
 
 void UAgressiveMovementComponent::MoveOnWallEvent()
 {
+	CheckVelocityMoveOnWall();
+	if (!TraceSphereSucsess)
+	{
+		RemoveMoveStatus(EAgressiveMoveMode::RunOnWall);
+	}
 	if (AgressiveMoveMode.Contains(EAgressiveMoveMode::RunOnWall))
 	{
 		FVector LaunchVector = GetMoveToWallVector() * SpeedRunOnWall;
@@ -655,6 +696,7 @@ void UAgressiveMovementComponent::StartRunOnWallInput()
 
 void UAgressiveMovementComponent::StartRunOnWall()
 {
+	ReloadDoubleJump();
 	AddStaminaModificator(-10, "RunOnWall");
 	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRunOnWall);
 }
@@ -677,7 +719,7 @@ void UAgressiveMovementComponent::LowStaminaEndRunOnWall()
 
 void UAgressiveMovementComponent::CheckVelocityMoveOnWall()
 {
-	if (GetCharacterOwner()->GetVelocity().Length() < MinMoveOnWallVelocity || ConsumeInputVector().Length()==0.0)
+	if (GetCharacterOwner()->GetVelocity().Length() < MinMoveOnWallVelocity || GetLastInputVector().Length()==0.0)
 	{
 		RemoveMoveStatus(EAgressiveMoveMode::RunOnWall);
 	}
@@ -709,12 +751,14 @@ void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMo
 		SpeedStrengthPushModificator->SelfValue = 1;
 		SpeedStrengthPushModificator->OperationType = EModificatorOperation::Multiply;
 		EndRunOnWall();
+		ReloadDoubleJump();
 	};
 }
 
 void UAgressiveMovementComponent::StartClimb()
 {
 	SetMovementMode(MOVE_None);
+	ReloadDoubleJump();
 }
 
 void UAgressiveMovementComponent::EndClimb()
@@ -732,6 +776,8 @@ void UAgressiveMovementComponent::EndClimbInput()
 	RemoveAgressiveModeInput(EAgressiveMoveMode::Climb);
 }
 
+
+
 void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 {
 	Super::PhysFalling(deltaTime, Iterations);
@@ -741,7 +787,10 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 		Launch(Velocity + CruckVector);
 	}
 	MaxWalkSpeed = DefaultMaxWalkSpeed;
-	MoveOnWallEvent();
+	if (AgressiveMoveMode.Contains(EAgressiveMoveMode::RunOnWall))
+	{
+		MoveOnWallEvent();
+	}
 	
 }
 
@@ -929,7 +978,7 @@ void UTrickObject::UseTrick_Implementation()
 
 bool UClimbTrickObject::CheckTrickEnable_Implementation()
 {
-	if (MovementComponent->AgressiveMoveMode.Find(EAgressiveMoveMode::Climb))
+	if (MovementComponent->AgressiveMoveMode.Contains(EAgressiveMoveMode::Climb))
 	{
 		return true;
 	}

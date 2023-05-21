@@ -187,7 +187,7 @@ public:
 	void AddStaminaModificator(float Value, FString Name);
 
 	UFUNCTION(BlueprintCallable)
-	void RemoveStaminaModificator(FString Name);
+	void RemoveStaminaModificator(FString Name, bool Force = false);
 
 
 
@@ -410,6 +410,19 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void ReloadJump();
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool EnableDoubleJump = true;
+
+	UFUNCTION(BlueprintCallable)
+	void ReloadDoubleJump();
+
+	UFUNCTION(BlueprintCallable)
+	void JumpInSky();
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool CanDoubleJump = true;
+
+
 
 	//JummFromWallEnd
 	
@@ -452,7 +465,7 @@ public:
 	void LowStaminaEndRunOnWall();
 
 	UPROPERTY(BlueprintReadWrite,EditAnywhere)
-	float MinMoveOnWallVelocity = 100;
+	float MinMoveOnWallVelocity = 50;
 
 	UFUNCTION(BlueprintCallable)
 	void CheckVelocityMoveOnWall();
