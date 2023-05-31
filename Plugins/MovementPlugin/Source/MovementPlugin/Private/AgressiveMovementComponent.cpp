@@ -58,7 +58,7 @@ void UAgressiveMovementComponent::CheckActiveMoveMode()
 
 		case EAgressiveMoveMode::Climb:
 		{
-			if ((MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess && CheckInputClimb())
+			if (CheckInputClimb()&&(MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess)
 			{
 				AddMoveStatus(EAgressiveMoveMode::Climb);
 				count--;
@@ -159,6 +159,7 @@ void UAgressiveMovementComponent::AddMoveStatus(EAgressiveMoveMode NewAgressiveM
 			break;
 		case EAgressiveMoveMode::Climb:
 			RemoveAllMoveStatus();
+			AgressiveMoveMode.Add(NewAgressiveMoveMode);
 			StartClimb();
 			break;
 		default:
@@ -239,17 +240,15 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Green, LocalString);
 		}
 	}
-	UTrickObject* LTrick = GetEnableTrick();
-	if (LTrick&&!ExecutedTrick)
-	{
-		ExecutedTrick = LTrick;
-		ExecutedTrick->FinishTrickDelegate.AddDynamic(this, &UAgressiveMovementComponent::TrickEnd);
-		LTrick->UseTrick();
-	}
+	TickTrick();
+
 	if (ExecutedTrick)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Blue, ExecutedTrick->GetName());
 	}
+
+	TickRun();
+	TickClimb();
 }
 void UAgressiveMovementComponent::TrickEnd(UTrickObject* FinisherTrickObject)
 {
@@ -279,10 +278,10 @@ void UAgressiveMovementComponent::StartRun()
 	}
 	if (SpeedRunModificator)
 	{
-		SpeedRunModificator->SelfValue = 2.0;
+		SpeedRunModificator->SelfValue = SpeedRunMultiply;
 	}
 	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
-	AddStaminaModificator(-10,"Run");
+	RunStaminaModificator = AddStaminaModificator(LowStaminaRunValue,"Run");
 	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRun);
 }
 
@@ -295,6 +294,7 @@ void UAgressiveMovementComponent::EndRun()
 	}
 	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
 	RemoveStaminaModificator("Run");
+	RunStaminaModificator = nullptr;
 }
 
 void UAgressiveMovementComponent::StartRunInput()
@@ -312,6 +312,10 @@ void UAgressiveMovementComponent::LowStaminaEndRun()
 	RemoveMoveStatus(EAgressiveMoveMode::Run);
 }
 
+void UAgressiveMovementComponent::RunTick()
+{
+}
+
 UTrickObject* UAgressiveMovementComponent::GetEnableTrick()
 {
 	for (UTrickObject* LTrickObject : TrickObjects)
@@ -324,7 +328,7 @@ UTrickObject* UAgressiveMovementComponent::GetEnableTrick()
 	return nullptr;
 }
 
-void UAgressiveMovementComponent::AddStaminaModificator(float Value, FString Name)
+UFloatModificator* UAgressiveMovementComponent::AddStaminaModificator(float Value, FString Name)
 {
 	if (StaminaModificator->FindModificator(Name))
 	{
@@ -353,6 +357,7 @@ void UAgressiveMovementComponent::AddStaminaModificator(float Value, FString Nam
 			}
 		}
 	}
+	return FloatModificator;
 }
 
 void UAgressiveMovementComponent::RemoveStaminaModificator(FString Name, bool Force)
@@ -412,6 +417,23 @@ void UAgressiveMovementComponent::StartSlide()
 void UAgressiveMovementComponent::EndSlideInput()
 {
 	RemoveMoveStatus(EAgressiveMoveMode::Slide);
+}
+
+void UAgressiveMovementComponent::TickRun()
+{
+	if (AgressiveMoveMode.Contains(EAgressiveMoveMode::Run))
+	{
+		if (UKismetMathLibrary::Dot_VectorVector(GetLastInputVector(), GetCharacterOwner()->GetActorForwardVector()) > 0)
+		{
+			RunStaminaModificator->SelfValue = LowStaminaRunValue;
+			SpeedRunModificator->SelfValue = SpeedRunMultiply;
+		}
+		else
+		{
+			RunStaminaModificator->SelfValue = 0;
+			SpeedRunModificator->SelfValue = 1.0;
+		}
+	}
 }
 
 void UAgressiveMovementComponent::EndSlide()
@@ -530,6 +552,16 @@ void UAgressiveMovementComponent::PlayStepTick(float DeltaTime)
 		}
 	}
 }
+void UAgressiveMovementComponent::TickTrick()
+{
+	UTrickObject* LTrick = GetEnableTrick();
+	if (LTrick && !ExecutedTrick)
+	{
+		ExecutedTrick = LTrick;
+		ExecutedTrick->FinishTrickDelegate.AddDynamic(this, &UAgressiveMovementComponent::TrickEnd);
+		LTrick->UseTrick();
+	}
+}
 void UAgressiveMovementComponent::JumpFromAllCruck(float Strength, FVector AddVector)
 {
 	if (CanTakeStamina(TakenJumpFromCruckStamina))
@@ -580,17 +612,20 @@ void UAgressiveMovementComponent::TraceForWalkChannel()
 }
 FVector UAgressiveMovementComponent::GetJumpFromWallVector()
 {
-	FVector JumpVector = {0,0,0};
+	FVector LJumpVector = {0,0,0};
 	if (WallTraceHitResults.Num() > 0)
 	{
-		for (FHitResult HitResult : WallTraceHitResults)
+		for (FHitResult LHitResult : WallTraceHitResults)
 		{
-			JumpVector = JumpVector + UKismetMathLibrary::GetDirectionUnitVector(HitResult.ImpactPoint,GetCharacterOwner()->GetActorLocation()) * (1-(UKismetMathLibrary::Vector_Distance(HitResult.ImpactPoint, GetCharacterOwner()->GetActorLocation())/ (GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 10)));
+			if (UKismetMathLibrary::Dot_VectorVector(GetLastInputVector(), UKismetMathLibrary::GetDirectionUnitVector(GetCharacterOwner()->GetActorLocation(), LHitResult.ImpactPoint)) < DotToIgnoteJumpWalls)
+			{
+				LJumpVector = LJumpVector + UKismetMathLibrary::GetDirectionUnitVector(LHitResult.ImpactPoint, GetCharacterOwner()->GetActorLocation()) * (1 - (UKismetMathLibrary::Vector_Distance(LHitResult.ImpactPoint, GetCharacterOwner()->GetActorLocation()) / (GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 10)));
+			}
 		}
-  		JumpVector = JumpVector + AppendVectorJumpFromWall;
-		UKismetMathLibrary::Vector_Normalize(JumpVector);
+  		LJumpVector = LJumpVector + AppendVectorJumpFromWall;
+		UKismetMathLibrary::Vector_Normalize(LJumpVector);
 	}
-	return JumpVector;
+	return LJumpVector;
 }
 void UAgressiveMovementComponent::JumpFromWall()
 {
@@ -757,8 +792,24 @@ void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMo
 
 void UAgressiveMovementComponent::StartClimb()
 {
-	SetMovementMode(MOVE_None);
+	SetMovementMode(MOVE_Flying);
+	Launch({ 0, 0, 0 });
 	ReloadDoubleJump();
+}
+
+void UAgressiveMovementComponent::TickClimb()
+{
+	if (AgressiveMoveMode.Contains(EAgressiveMoveMode::Climb))
+	{
+		if (!ExecutedTrick || (ExecutedTrick && !ClimbTrickObjects.Contains(ExecutedTrick)))
+		{
+			if (!CheckInputClimb())
+			{
+				RemoveMoveStatus(EAgressiveMoveMode::Climb);
+			}
+		}
+	}
+	
 }
 
 void UAgressiveMovementComponent::EndClimb()
@@ -773,7 +824,7 @@ void UAgressiveMovementComponent::StartClimbInput()
 
 void UAgressiveMovementComponent::EndClimbInput()
 {
-	RemoveAgressiveModeInput(EAgressiveMoveMode::Climb);
+	RemoveMoveStatus(EAgressiveMoveMode::Climb);
 }
 
 
@@ -817,7 +868,9 @@ void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 bool UAgressiveMovementComponent::CheckInputClimb()
 {
 	FHitResult HitResult;
-	GetWorld()->LineTraceSingleByChannel(HitResult, GetLeadgeTraceDirect(), GetLeadgeTraceDirect() + GetCharacterOwner()->GetActorForwardVector() * FindLeadgeTraceLength, ECollisionChannel::ECC_Visibility);
+	auto DebugTrace = [&]() {if (Debug) { return EDrawDebugTrace::ForOneFrame; }; return EDrawDebugTrace::None; };
+	const TArray<AActor*> ActorIgnore;
+	UKismetSystemLibrary::LineTraceSingle(this, GetCharacterOwner()->GetActorLocation(), GetCharacterOwner()->GetActorLocation() + GetForwardClimbVector() * FindLeadgeTraceLength, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), HitResult, true, FLinearColor::Blue);
 	if (HitResult.bBlockingHit)
 	{
 		WallInFrontClimbCheck = HitResult;
@@ -834,7 +887,10 @@ bool UAgressiveMovementComponent::FindClimbeLeadge()
 	FindClimbByTrace(HitResults);
 	if (!(HitResults.Num() > 0))
 	{
-		FindClimbByMeshPoligon(HitResults);
+		if (EnableTraceByMesh)
+		{
+			FindClimbByMeshPoligon(HitResults);
+		}
 	}
 	if (HitResults.Num() > 0)
 	{
@@ -857,15 +913,21 @@ bool UAgressiveMovementComponent::FindClimbeLeadge()
 
 bool UAgressiveMovementComponent::FindClimbByTrace(TArray<FHitResult>& OptimalResults)
 {
+	auto DebugTrace = [&]() {if (Debug) { return EDrawDebugTrace::ForOneFrame; }; return EDrawDebugTrace::None; };
+	const TArray<AActor*> ActorIgnore;
 	for (int Index = 0; Index < TraceClimbNumber; Index++)
 	{
-		FRotator LRotator = { 0,0,TraceClimbAngle };
-		FVector LocalVector = LRotator.RotateVector(GetCharacterOwner()->GetActorForwardVector());
+		FVector LocalVector = GetForwardClimbVector();
+		LocalVector = UKismetMathLibrary::RotateAngleAxis(LocalVector, (Index - TraceClimbNumber / 2) * TraceClimbAngle, { 0,0,1 });
+		LocalVector = LocalVector;
+		UKismetMathLibrary::Vector_Normalize(LocalVector);
 		FHitResult LHitResult;
-		GetWorld()->LineTraceSingleByChannel(LHitResult, GetLeadgeTraceDirect(), GetLeadgeTraceDirect() + LocalVector * FindLeadgeTraceLength, ECollisionChannel::ECC_Visibility);
+		FVector EndPoint = GetLeadgeTraceDirect() + (LocalVector) * FindLeadgeTraceLength;
+		FVector BackTrace = { 0,0,100 };
+		UKismetSystemLibrary::LineTraceSingle(this, GetLeadgeTraceDirect(), EndPoint, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), LHitResult, true,FLinearColor::Blue);
 		if (!LHitResult.bBlockingHit)
 		{
-			GetWorld()->LineTraceSingleByChannel(LHitResult, GetLeadgeTraceDirect() + LocalVector * FindLeadgeTraceLength, GetLeadgeTraceDirect() + LocalVector * FindLeadgeTraceLength - (0,0,30), ECollisionChannel::ECC_Visibility);
+			UKismetSystemLibrary::LineTraceSingle(this, EndPoint, EndPoint - BackTrace, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), LHitResult, true, FLinearColor::Blue);
 		}
 		if (LHitResult.bBlockingHit)
 		{
@@ -958,6 +1020,11 @@ FVector UAgressiveMovementComponent::GetLeadgeTraceDirect()
 	return GetCharacterOwner()->GetActorLocation() + LeadgeTraceLocalVectorDirect;
 }
 
+FVector UAgressiveMovementComponent::GetForwardClimbVector()
+{
+	return GetCharacterOwner()->GetController()->GetControlRotation().Vector();
+}
+
 FVector UAgressiveMovementComponent::GetOptimalClimbVectorDirection()
 {
 	if(DirectionalClimbVector.Length() == 0)
@@ -1030,4 +1097,53 @@ void UDinamicCameraManager::ApplyCamera_Implementation()
 FRotator UDinamicCameraManager::CalculateApplyRotator_Implementation(float DeltaTime)
 {
 	return FRotator(0,0,1)* DeltaTime;
+}
+
+bool UClimbingTopEndTrickObject::CheckTrickEnable_Implementation()
+{
+	if (Super::CheckTrickEnable_Implementation())
+	{
+		FVector LTopVector = { 0,0,1 };
+		if (MovementComponent->OptimalLeadge.ImpactNormal.Dot(LTopVector) > MinDotForEndTop)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void UClimbingTopEndTrickObject::UseTrick_Implementation()
+{
+	Super::UseTrick_Implementation();
+	float MinResult = -1;
+	float LDistance = MovementComponent->OptimalLeadge.ImpactPoint.Z - MovementComponent->GetCharacterOwner()->GetActorLocation().Z;
+	FAnimClimbingStruct LOptimalClimbingMontage;
+	for (FAnimClimbingStruct LAnimClimbingEndMontage : AnimClimbingEndMontage)
+	{
+		if (LAnimClimbingEndMontage.AnimMontage)
+		{
+			float LDistanceOptimal = (1 - (LAnimClimbingEndMontage.DistanceClimbStart - LDistance) / LAnimClimbingEndMontage.NormalizeDistance);
+			if (LDistanceOptimal > MinResult)
+			{
+				LOptimalClimbingMontage = LAnimClimbingEndMontage;
+				MinResult = LDistanceOptimal;
+			}
+		}
+	}
+	OptimalAnimClimbingEndMontage = LOptimalClimbingMontage;
+	MovementComponent->GetCharacterOwner()->PlayAnimMontage(LOptimalClimbingMontage.AnimMontage);
+	MovementComponent->GetCharacterOwner()->GetMesh()->GetAnimInstance()->OnMontageEnded.AddDynamic(this, &UClimbingTopEndTrickObject::MontagePlayEndBind);
+}
+
+void UClimbingTopEndTrickObject::MontagePlayEndBind(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (Montage == OptimalAnimClimbingEndMontage.AnimMontage)
+	{
+		MovementComponent->GetCharacterOwner()->GetMesh()->GetAnimInstance()->OnMontageEnded.RemoveDynamic(this, &UClimbingTopEndTrickObject::MontagePlayEndBind);
+		FinishTrickDelegate.Broadcast(this);
+		if (MovementComponent->CheckInputClimb())
+		{
+			MovementComponent->RemoveMoveStatus(EAgressiveMoveMode::Climb);
+		}
+	}
 }

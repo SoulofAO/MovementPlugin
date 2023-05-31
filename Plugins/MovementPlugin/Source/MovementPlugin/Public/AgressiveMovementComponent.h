@@ -57,6 +57,8 @@ public:
 
 	UPROPERTY(BlueprintCallable, meta = (ToolTip = "Call when want end Trick"))
 	FFinishTrick FinishTrickDelegate;
+
+
 };
 
 UCLASS(Blueprintable)
@@ -95,7 +97,46 @@ public:
 
 };
 
+USTRUCT(Blueprintable)
+struct FAnimClimbingStruct
+{
+	GENERATED_BODY()
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	UAnimMontage* AnimMontage;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float DistanceClimbStart = 10;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float NormalizeDistance = 20;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float MultyplyPriority = 2.0;
+};
+
+UCLASS(Blueprintable)
+class MOVEMENTPLUGIN_API UClimbingTopEndTrickObject : public UClimbTrickObject
+{
+	GENERATED_BODY()
+public:
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	TArray<FAnimClimbingStruct> AnimClimbingEndMontage;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float MinDotForEndTop = 0.8;
+
+	virtual bool CheckTrickEnable_Implementation();
+
+	virtual void UseTrick_Implementation();
+
+	UPROPERTY(BlueprintReadOnly)
+	FAnimClimbingStruct OptimalAnimClimbingEndMontage;
+
+	UFUNCTION()
+	void MontagePlayEndBind(UAnimMontage* Montage, bool bInterrupted);
+};
 
 UENUM(Blueprintable)
 enum class EAgressiveMoveMode : uint8
@@ -184,7 +225,7 @@ public:
 	bool RemoveStaminaBaseAddWhenSpendStamina = true;
 
 	UFUNCTION(BlueprintCallable)
-	void AddStaminaModificator(float Value, FString Name);
+	UFloatModificator* AddStaminaModificator(float Value, FString Name);
 
 	UFUNCTION(BlueprintCallable)
 	void RemoveStaminaModificator(FString Name, bool Force = false);
@@ -224,6 +265,9 @@ public:
 
 	UFUNCTION()
 	void TrickEnd(UTrickObject* FinisherTrickObject);
+
+	UFUNCTION()
+	void TickTrick();
 
 	//TrickEnd
 
@@ -283,6 +327,18 @@ public:
 
 	UFUNCTION()
 	void StartRun();
+
+	UFUNCTION()
+	void TickRun();
+
+	UPROPERTY(BlueprintReadOnly)
+	UFloatModificator* RunStaminaModificator;
+
+	UPROPERTY(BlueprintReadWrite)
+	float LowStaminaRunValue = -10;
+
+	UFUNCTION(BlueprintCallable)
+	void RunTick();
 
 	UFUNCTION(BlueprintCallable)
 	void EndRunInput();
@@ -413,6 +469,9 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool EnableDoubleJump = true;
 
+	UPROPERTY(BlueprintReadWrite)
+	float DotToIgnoteJumpWalls = 0.5;
+
 	UFUNCTION(BlueprintCallable)
 	void ReloadDoubleJump();
 
@@ -484,6 +543,9 @@ public:
 	UFUNCTION()
 	void StartClimb();
 
+	UFUNCTION()
+	void TickClimb();
+
 	UFUNCTION(BlueprintCallable)
 	void EndClimbInput();
 
@@ -508,11 +570,17 @@ public:
 	UPROPERTY(BlueprintReadOnly)
 	FHitResult OptimalLeadge;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool EnableTraceByMesh = false;
+
+	UFUNCTION(BlueprintCallable)
+	virtual FVector GetForwardClimbVector();
+
 	UPROPERTY(BlueprintReadWrite,EditAnywhere)
 	int TraceClimbNumber = 3;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float TraceClimbAngle = 30;
+	float TraceClimbAngle = 45;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float MinDotAngleForClimb = 0.5;
