@@ -447,18 +447,21 @@ void UAgressiveMovementComponent::EndSlide()
 
 AMovementCableActor* UAgressiveMovementComponent::SpawnCruck(FVector Location, TSubclassOf<AMovementCableActor> CableActorClass, bool CheckLocationDistance)
 {
-	if (CheckLocationDistance)
+	if (ActiveCruck)
 	{
-		if (UKismetMathLibrary::Vector_Distance(Location, HandComponent->GetComponentLocation())< LengthCruck)
+		if (CheckLocationDistance)
+		{
+			if (UKismetMathLibrary::Vector_Distance(Location, HandComponent->GetComponentLocation()) < LengthCruck)
+			{
+				return BaseSpawnCruck(Location, CableActorClass);
+			}
+		}
+		else
 		{
 			return BaseSpawnCruck(Location, CableActorClass);
 		}
+		return nullptr;
 	}
-	else
-	{
-		return BaseSpawnCruck(Location, CableActorClass);
-	}
-	return nullptr;
 };
 
 AMovementCableActor* UAgressiveMovementComponent::BaseSpawnCruck(FVector Location, TSubclassOf<AMovementCableActor> CableActorClass)
@@ -567,10 +570,10 @@ void UAgressiveMovementComponent::JumpFromAllCruck(float Strength, FVector AddVe
 	if (CanTakeStamina(TakenJumpFromCruckStamina))
 	{
 		TakeStamina(TakenJumpFromCruckStamina);
+		FVector LaunchVector = GetJumpFromCruckVector() + AddVector;
+		Launch(LaunchVector * Strength);
 		for (AMovementCableActor* CableActor : Cabels)
 		{
-			FVector LaunchVector = CableActor->GetJumpUnitVector() + AddVector;
-			Launch(CableActor->GetJumpUnitVector() * Strength);
 			CableActor->Destroy();
 		}
 		Cabels.Empty();
@@ -657,6 +660,15 @@ void UAgressiveMovementComponent::ReloadJump()
 	ReloadJumpTimeHandle.Invalidate();
 }
 
+FVector UAgressiveMovementComponent::GetJumpFromCruckVector()
+{
+	return FVector();
+}
+
+void UAgressiveMovementComponent::SetActiveCruck()
+{
+}
+
 void UAgressiveMovementComponent::ReloadDoubleJump()
 {
 	CanDoubleJump = true;
@@ -670,6 +682,35 @@ void UAgressiveMovementComponent::JumpInSky()
  	Launch(LLaunchVector);
 	GetWorld()->GetTimerManager().SetTimer(ReloadJumpTimeHandle, this, &UAgressiveMovementComponent::ReloadJump, TimeReloadJumpFromWall, false);
 	RemoveAllMoveStatus();
+}
+
+void UAgressiveMovementComponent::CruckFlyTick(float DeltaTime)
+{
+	if (GetActiveCruck())
+	{
+		FVector CruckVector = GetApplyCruck();
+		if (!CruckVector.IsNearlyZero())
+		{
+			Launch(Velocity + CruckVector);
+		}
+	}
+}
+
+void UAgressiveMovementComponent::CruckWalkingTick(float Delta)
+{
+	if (GetActiveCruck())
+	{
+		FVector CruckVector = GetApplyCruck();
+		if (!CruckVector.IsNearlyZero())
+		{
+			CruckVector = { CruckVector.X,CruckVector.Y,0 };
+			UKismetMathLibrary::Vector_Normalize(CruckVector);
+			FHitResult HitResult;
+			float DotScale = FMath::Clamp(UKismetMathLibrary::Dot_VectorVector((CruckVector / CruckVector.Size()), (Velocity / Velocity.Size())), 0, 1) + 0.5;
+			SpeedStrengthPushModificator->SelfValue = DotScale * FMath::Clamp(1 - CruckVector.Size() / StrengthPushCruck, 0, 1);
+			MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
+		}
+	}
 }
 
 FVector UAgressiveMovementComponent::GetMoveToWallVector()
@@ -832,11 +873,8 @@ void UAgressiveMovementComponent::EndClimbInput()
 void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 {
 	Super::PhysFalling(deltaTime, Iterations);
-	FVector CruckVector = GetApplyCruck();
-	if (!CruckVector.IsNearlyZero())
-	{
-		Launch(Velocity + CruckVector);
-	}
+
+	CruckFlyTick(deltaTime);
 	MaxWalkSpeed = DefaultMaxWalkSpeed;
 	if (AgressiveMoveMode.Contains(EAgressiveMoveMode::RunOnWall))
 	{
@@ -848,20 +886,13 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 {
 	Super::PhysWalking(deltaTime, Iterations);
-	FVector CruckVector = GetApplyCruck();
-	if (!CruckVector.IsNearlyZero())
-	{
-		CruckVector = { CruckVector.X,CruckVector.Y,0 };
-		UKismetMathLibrary::Vector_Normalize(CruckVector);
-		FHitResult HitResult;
-		float DotScale = FMath::Clamp(UKismetMathLibrary::Dot_VectorVector((CruckVector / CruckVector.Size()), (Velocity / Velocity.Size())),0,1)+0.5;
-		SpeedStrengthPushModificator->SelfValue = DotScale* FMath::Clamp(1 - CruckVector.Size() / StrengthPushCruck, 0, 1);
-		MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
-	}
+	CruckWalkingTick(deltaTime);
+
 	if (GetCharacterOwner()->GetVelocity().Length() < MinSpeedForSliding)
 	{
 		RemoveMoveStatus(EAgressiveMoveMode::Slide);
 	};
+
 	PlayStepTick(deltaTime);
 }
 
@@ -1146,4 +1177,24 @@ void UClimbingTopEndTrickObject::MontagePlayEndBind(UAnimMontage* Montage, bool 
 			MovementComponent->RemoveMoveStatus(EAgressiveMoveMode::Climb);
 		}
 	}
+}
+
+UBaseDynamicCameraManager::UBaseDynamicCameraManager()
+{
+	Super::UBaseDynamicCameraManager();
+	VelocityToCameraRotation = LoadObject<UCurveFloat>(nullptr, TEXT("/Game/Plugins/MovementPlugin/Content/Other/BaseVelocityToCameraRotation.uasset"));
+	RotationToCameraRotation = LoadObject<UCurveFloat>(nullptr, TEXT("/Game/Plugins/MovementPlugin/Content/Other/BaseRotationToCameraRotation.uasset"));
+}
+
+FRotator UBaseDynamicCameraManager::CalculateApplyRotator_Implementation(float DeltaTime)
+{
+	FRotator LRotator = { 0,0,0 };
+	if (MovementComponent->ActiveCruck && MovementComponent->MovementMode == EMovementMode::MOVE_Flying)
+	{
+		MovementComponent->JumpFromAllCruck();
+		float LRotateValue =  VelocityToCameraRotation->GetFloatValue(MovementComponent->Velocity.Length());
+		float DistanceToRotation = MovementComponent
+		LRotateValue = RotationToCameraRotation->GetFloatValue();
+	}
+	return LRotator;
 }

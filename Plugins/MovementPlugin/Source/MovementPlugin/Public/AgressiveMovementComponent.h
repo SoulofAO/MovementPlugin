@@ -9,9 +9,76 @@
 #include "Camera/CameraShakeBase.h"
 #include "AgressiveMovementComponent.generated.h"
 /**
- * 
+ * Небольшое объявление  о струтктуре плагина.
+
+Плагин работате поверх текущих состояний movement Component почти не перезаписывая эвенты компонента ниже. 
+Плагин содержит UAgressiveMoveMode. Это модификаторы передвижения, которые могут накладываться сразу рядами и перезаписывать друг друга при необходимости. 
+Например, игрок одновременно может как бежать, так и бежать по стене. 
+
+Все накладываемые статусы должны иметь следующую структуру - 
+Структура Input. 
+- первый обработчик любых запросов активации того или иного Agressive Status. Его вызывает клиент. Как правило он добавляет Agressive Mode в NotActiveAgressiveMoveMode. 
+Эта группа содержит в себе все желаемые для активации MoveMode. 
+Это позволяет например, забиндить на одну клавишу все MoveMode которые должны проигрываться при ускорении и обеспечить плавность их исполнения, 
+так как в таком случае их активация будет задействована по мере необходимости. 
+Похожая система например содержиться в Dying Light когда Shift позволяла игроку лазить, бегать, бегать по стенам и тд. 
+
+Все NotActiveAgressiveMoveMode обрабатываются CheckActiveMoveMode. Эта функция вычисляет время перехода неактивной способности в активную. 
+Затем все активированные способности обрабатываются в AddMoveStatus. Тут запускаются все Start функции статусов, а также решаются конфликты. 
+Start функции выступают сугубо запуском статусов, а в AddMove Status прописываются решения конфликтов статусов.
+Например, Climb должен отменить все остальные статусы при появлении. 
+
+Каждый Status имеет функцию Status Tick. Она определяет то как статус будет обрабатываться в любом из Tick компонента или на таймере.
+В Tick содержиться проверка валидности статуса при окружении,а также его изменение. 
+
+Удаление статуса происходит в соответствующим tick стаутса либо при input от игрока. 
+Удаление статуса происходит через функцию RemoveStatus, также отвечающей за обработку конфликтов, который вызывает функции Remove "Status". 
+На момент 04.06.2023 удаление не содержит дополнительной оболочки запросов на удаление и удаляется без возврата в NotActiveAgressiveMoveMode. Я исправлю это позже.
+
+Статусы не имеют отдельной имплементации например по разным UObject ввиду сложностей в их обработке. 
+Возможно, ситуация измениться позже. 
+
+В плагине прописаны разнообразные вспомогательные функции, например система трюков и шагов. 
+
+В плагине сущетсвуют некоторые исключения, однако те несущественны, поэтому данное послание рекомендуется считать истинным в последней инстанции и придерживаться его.
  */
 
+/*
+
+A small announcement about the plugin structure.
+
+The plugin works on top of the current states of the movement Component almost without overwriting the events of the component below.
+The plugin contains a UAgressiveMoveMode. These are movement modifiers that can overlap in rows at once and overwrite each other if necessary. 
+For example, a player can both run and run along a wall at the same time.
+
+All imposed statuses should have the following structure -
+Input structure.- the first handler of any activation requests of an Aggressive Status. It is called by the client. 
+As a rule, it adds Aggressive Mode to NotActiveAgressiveMoveMode.
+This group contains everything you want to activate MoveMode. 
+This allows, for example, to bind on one key all movemodes that should be played during acceleration and ensure smoothness of their execution,
+since in this case their activation will be activated as needed
+. A similar system, for example, is contained in Dying Light when Shift allowed the player to climb, run, run on walls, etc.
+
+All notactiveagressivemovemodes are handled by CheckActiveMoveMode. This function calculates the transition time of an inactive ability to an active one. 
+Then all activated abilities are processed in AddMoveStatus.
+All the Start functions of statuses are started here, as well as conflicts are resolved. 
+Start functions are purely the launch of statuses, and AddMove Status prescribes solutions to status conflicts. 
+For example, Climb should cancel all other statuses when it appears.
+
+Each Status has a Status Tick function.
+It determines how the status will be processed in any of the Tick component or on the timer. Tick contains validation of the status in the environment, as well as its change.
+
+The status is deleted in the corresponding tick stouts or with input from the player.
+The status is deleted via the RemoveStatus function, also responsible for conflict handling, which calls the Remove "Status" function. At the time of 06/04/2023, the deletion does not contain an additional shell of deletion requests and is deleted without returning to NotActiveAgressiveMoveMode. 
+I'll fix it later.
+
+Statuses do not have a separate implementation, for example, for different UObjects due to difficulties in processing them. 
+Perhaps the situation will change later.
+
+The plugin has a variety of auxiliary functions, such as a system of tricks and steps.
+
+There are some exceptions in the plugin, but those are insignificant, so it is recommended that this message be considered true in the last instance and stick to it.
+*/
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFinishTrick, UTrickObject*, FinisherTrickObject);
 
 
@@ -35,6 +102,25 @@ public:
 	FRotator CalculateApplyRotator(float DeltaTime);
 
 	virtual FRotator CalculateApplyRotator_Implementation(float DeltaTime);
+};
+
+UCLASS(Blueprintable)
+class MOVEMENTPLUGIN_API UBaseDynamicCameraManager : public UDinamicCameraManager
+{
+	GENERATED_BODY()
+
+	UBaseDynamicCameraManager();
+
+public:
+	virtual void ApplyCamera_Implementation();
+
+	virtual FRotator CalculateApplyRotator_Implementation(float DeltaTime);
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	UCurveFloat* VelocityToCameraRotation;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	UCurveFloat* RotationToCameraRotation;
 };
 
 UCLASS(Blueprintable)
@@ -391,8 +477,26 @@ public:
 	//Slide End
 	
 	//Hook Code
-	UPROPERTY(EditAnywhere,BlueprintReadWrite)
-	bool ActiveCruck = false;
+
+protected:
+	UPROPERTY(EditAnywhere)
+	bool ActiveCruck = true;
+
+public:
+	UFUNCTION()
+	void SetActiveCruck();
+
+	UFUNCTION()
+	bool GetActiveCruck();
+
+	UFUNCTION()
+	FVector GetJumpFromCruckVector();
+
+	UFUNCTION()
+	void CruckWalkingTick(float DeltaTime);
+
+	UFUNCTION()
+	void CruckFlyTick(float DeltaTime);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float LengthCruck = 1000;
