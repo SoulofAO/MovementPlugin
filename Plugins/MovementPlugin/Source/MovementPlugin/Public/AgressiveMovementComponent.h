@@ -94,14 +94,20 @@ public:
 	FRotator ApplyRotator;
 
 	UFUNCTION(BlueprintNativeEvent)
-	void ApplyCamera();
+	void ApplyCamera(float DeltaTime);
 
-	virtual void ApplyCamera_Implementation();
+	virtual void ApplyCamera_Implementation(float DeltaTime);
 
-	UFUNCTION(BlueprintNativeEvent)
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	FRotator CalculateApplyRotator(float DeltaTime);
 
 	virtual FRotator CalculateApplyRotator_Implementation(float DeltaTime);
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
+	bool CheckApplyCamera();
+
+	virtual bool CheckApplyCamera_Implementation();
+
 };
 
 UCLASS(Blueprintable)
@@ -112,15 +118,17 @@ class MOVEMENTPLUGIN_API UBaseDynamicCameraManager : public UDinamicCameraManage
 	UBaseDynamicCameraManager();
 
 public:
-	virtual void ApplyCamera_Implementation();
+	virtual void ApplyCamera_Implementation(float DeltaTime);
 
 	virtual FRotator CalculateApplyRotator_Implementation(float DeltaTime);
+
+	virtual bool CheckApplyCamera_Implementation();
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	UCurveFloat* VelocityToCameraRotation;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UCurveFloat* RotationToCameraRotation;
+	UCurveFloat* DotToCameraRotation;
 };
 
 UCLASS(Blueprintable)
@@ -357,6 +365,16 @@ public:
 
 	//TrickEnd
 
+	//CameraManagerSystem
+	UPROPERTY(BlueprintReadOnly, EditAnywhere)
+	TArray<TSubclassOf<UDinamicCameraManager>> StartDynamicCameraManagerClasses;
+
+	UPROPERTY(BlueprintReadWrite)
+	TArray<UDinamicCameraManager*> DynamicCameraManagers;
+
+	UFUNCTION()
+	void TickCameraManagersUpdate(float DeltaTime);
+
 	//SpeedStart
 	UPROPERTY(BlueprintReadOnly)
 	float DefaultMaxWalkSpeed;
@@ -376,6 +394,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StepSensorEvent|Shake")
 	TSubclassOf<UCameraShakeBase> WalkCameraShake;
 
+	//SoundStep
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StepSensorEvent|Sound")
 	USoundBase* SoundWalkStep;
 
@@ -396,8 +415,17 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StepSensorEvent")
 	UCurveFloat* VelocityToDelayPerStep;
+	//SoundStepEnd
 
 	//RunStatus
+	UPROPERTY(EditAnywhere, BlueprintGetter = GetEnableRun, BlueprintSetter = SetEnableRun)
+	bool EnableRun = true;
+
+	UFUNCTION(BlueprintSetter)
+	void SetEnableRun(bool NewEnableRun);
+
+	UFUNCTION(BlueprintGetter)
+	bool GetEnableRun();
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "StepSensorEvent|Shake")
 	TSubclassOf<UCameraShakeBase> RunCameraShake;
@@ -424,9 +452,6 @@ public:
 	float LowStaminaRunValue = -10;
 
 	UFUNCTION(BlueprintCallable)
-	void RunTick();
-
-	UFUNCTION(BlueprintCallable)
 	void EndRunInput();
 
 	UFUNCTION()
@@ -444,6 +469,17 @@ public:
 	//Speed End
 
 	//Slide Start
+
+
+	UPROPERTY(EditAnywhere, BlueprintGetter = GetEnableSlide, BlueprintSetter = SetEnableSlide)
+	bool EnableSlide = true;
+
+	UFUNCTION(BlueprintSetter)
+	void SetEnableSlide(bool NewEnableSlide);
+
+	UFUNCTION(BlueprintGetter)
+	bool GetEnableSlide();
+
 
 	UPROPERTY(BlueprintReadWrite)
 	float DefaultGroundFriction;
@@ -478,16 +514,14 @@ public:
 	
 	//Hook Code
 
-protected:
-	UPROPERTY(EditAnywhere)
-	bool ActiveCruck = true;
+	UPROPERTY(EditAnywhere, BlueprintGetter = GetEnableCruck, BlueprintSetter = SetEnableCruck)
+	bool EnableCruck = true;
 
-public:
-	UFUNCTION()
-	void SetActiveCruck();
+	UFUNCTION(BlueprintSetter)
+	void SetEnableCruck(bool NewEnableCruck);
 
-	UFUNCTION()
-	bool GetActiveCruck();
+	UFUNCTION(BlueprintGetter)
+	bool GetEnableCruck();
 
 	UFUNCTION()
 	FVector GetJumpFromCruckVector();
@@ -591,7 +625,14 @@ public:
 	
 	//MoveOnWallStart
 
+	UPROPERTY(EditAnywhere, BlueprintGetter = GetEnableMoveOnWall, BlueprintSetter = SetEnableMoveOnWall)
+	bool EnableMoveOnWall = true;
 
+	UFUNCTION(BlueprintSetter)
+	void SetEnableMoveOnWall(bool NewEnableMoveOnWall);
+
+	UFUNCTION(BlueprintGetter)
+	bool GetEnableMoveOnWall();
 
 	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	float DefaultStaminaExpence = 10;
@@ -604,7 +645,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UCameraShakeBase* RunOnWalkCameraShake;
-
 
 	UFUNCTION(BlueprintCallable)
 	FVector GetMoveToWallVector();
@@ -640,6 +680,15 @@ public:
 	//MoveOnWallEnd
 
 	//Parkor Start
+
+	UPROPERTY(EditAnywhere, BlueprintGetter = GetEnableClimb, BlueprintSetter = SetEnableClimb)
+	bool EnableClimb = true;
+
+	UFUNCTION(BlueprintSetter)
+	void SetEnableClimb(bool NewEnableClimb);
+
+	UFUNCTION(BlueprintGetter)
+	bool GetEnableClimb();
 
 	UFUNCTION(BlueprintCallable)
 	void StartClimbInput();
