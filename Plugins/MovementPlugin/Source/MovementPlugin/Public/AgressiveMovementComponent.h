@@ -485,7 +485,13 @@ public:
 	float DefaultGroundFriction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float GroundFrictionWhenSliding = 0.01;
+	float GroundFrictionWhenSliding = 0.05;
+
+	UPROPERTY(BlueprintReadWrite)
+	float DefailtGroundBraking;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float GroundBrakingWhenSliding = 200;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float MinSpeedForSliding = 100;
@@ -524,7 +530,7 @@ public:
 	bool GetEnableCruck();
 
 	UFUNCTION()
-	FVector GetJumpFromCruckVector();
+	FVector GetNormalizeCruckVector();
 
 	UFUNCTION()
 	void CruckWalkingTick(float DeltaTime);

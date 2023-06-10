@@ -15,8 +15,6 @@
 UAgressiveMovementComponent::UAgressiveMovementComponent()
 {
 	DefaultMaxWalkSpeed = MaxWalkSpeed;
-	SpeedModificator = NewObject<UFloatModificatorContext>(this, "SpeedModificator");
-	StaminaModificator = NewObject<UFloatModificatorContext>(this, "StaminaModificator");
 	MaxAcceleration = 600;
 }
 
@@ -210,10 +208,14 @@ void UAgressiveMovementComponent::RemoveAllMoveStatus(bool SendToInput)
 void UAgressiveMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
+	SpeedModificator = NewObject<UFloatModificatorContext>(this, "SpeedModificator");
+	StaminaModificator = NewObject<UFloatModificatorContext>(this, "StaminaModificator");
+
+
 	AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
 	DefaultCharacterSize = GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 	DefaultMaxAcceleration = MaxAcceleration;
-	DefaultMaxWalkSpeed = MaxWalkSpeed;
 	for (TSubclassOf<UTrickObject> LClassTrickObject : StartTrickObjects)
 	{
 		UTrickObject* LNewTrickObject = NewObject<UTrickObject>(this, LClassTrickObject);
@@ -230,6 +232,7 @@ void UAgressiveMovementComponent::BeginPlay()
 		UDinamicCameraManager* LNewDynamicCameraManager = NewObject<UDinamicCameraManager>(this,LCameraManagerClass);
 		DynamicCameraManagers.Add(LNewDynamicCameraManager);
 	}
+
 }
 
 void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -448,7 +451,9 @@ void UAgressiveMovementComponent::StartSlideInput()
 void UAgressiveMovementComponent::StartSlide()
 {
 	DefaultGroundFriction = GroundFriction;
-	GroundFriction = 0.01;
+	DefailtGroundBraking = BrakingDecelerationWalking;
+	GroundFriction = GroundFrictionWhenSliding;
+	BrakingDecelerationWalking = GroundBrakingWhenSliding;
 	GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), SlideCharacterSize);
 	UFloatModificator* FloatModificator = SpeedModificator->CreateNewModificator();
 	FloatModificator->SelfValue = 0;
@@ -483,6 +488,7 @@ void UAgressiveMovementComponent::TickRun()
 void UAgressiveMovementComponent::EndSlide()
 {
 	GroundFriction = DefaultGroundFriction;
+	BrakingDecelerationWalking = DefailtGroundBraking;
 	GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), DefaultCharacterSize);
 	SpeedModificator->RemoveModificatorByName("Slide");
 	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
@@ -614,7 +620,7 @@ void UAgressiveMovementComponent::JumpFromAllCruck(float Strength, FVector AddVe
 	if (CanTakeStamina(TakenJumpFromCruckStamina))
 	{
 		TakeStamina(TakenJumpFromCruckStamina);
-		FVector LaunchVector = GetJumpFromCruckVector() + AddVector;
+		FVector LaunchVector = GetNormalizeCruckVector() + AddVector;
 		Launch(LaunchVector * Strength);
 		for (AMovementCableActor* CableActor : Cabels)
 		{
@@ -714,9 +720,17 @@ void UAgressiveMovementComponent::ReloadJump()
 	ReloadJumpTimeHandle.Invalidate();
 }
 
-FVector UAgressiveMovementComponent::GetJumpFromCruckVector()
+FVector UAgressiveMovementComponent::GetNormalizeCruckVector()
 {
-	return FVector();
+	FVector LMovementDirection = { 0,0,0 };
+	for (AMovementCableActor* LCableActor : Cabels)
+	{
+		FVector LCableVector = { 0,0,0 };
+		LCableVector = UKismetMathLibrary::GetDirectionUnitVector(LCableActor->SceneComponentHand->GetComponentLocation(), LCableActor->GetLastPoint());
+		LMovementDirection = LMovementDirection + LCableVector;
+	}
+	UKismetMathLibrary::Vector_Normalize(LMovementDirection);
+	return LMovementDirection;
 }
 
 void UAgressiveMovementComponent::SetEnableCruck(bool NewEnableCruck)
@@ -751,7 +765,7 @@ void UAgressiveMovementComponent::JumpInSky()
 
 void UAgressiveMovementComponent::CruckFlyTick(float DeltaTime)
 {
-	if (GetEnableCruck())
+	if (GetEnableCruck()&&MovementMode==EMovementMode::MOVE_Falling)
 	{
 		FVector CruckVector = GetApplyCruck();
 		if (!CruckVector.IsNearlyZero())
@@ -768,14 +782,29 @@ void UAgressiveMovementComponent::CruckWalkingTick(float Delta)
 		FVector CruckVector = GetApplyCruck();
 		if (!CruckVector.IsNearlyZero())
 		{
-			CruckVector = { CruckVector.X,CruckVector.Y,0 };
-			UKismetMathLibrary::Vector_Normalize(CruckVector);
-			FHitResult HitResult;
-			float DotScale = FMath::Clamp(UKismetMathLibrary::Dot_VectorVector((CruckVector / CruckVector.Size()), (Velocity / Velocity.Size())), 0, 1) + 0.5;
-			SpeedStrengthPushModificator->SelfValue = DotScale * FMath::Clamp(1 - CruckVector.Size() / StrengthPushCruck, 0, 1);
-			MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
+			if (!SpeedStrengthPushModificator)
+			{
+				SpeedStrengthPushModificator = SpeedModificator->CreateNewModificator();
+				SpeedStrengthPushModificator->SelfValue = 1;
+				SpeedStrengthPushModificator->OperationType = EModificatorOperation::Multiply;
+			}
+			if (SpeedStrengthPushModificator)
+			{
+				CruckVector = { CruckVector.X,CruckVector.Y,0 };
+				UKismetMathLibrary::Vector_Normalize(CruckVector);
+				float InputVectorDot = GetLastInputVector().Dot(GetNormalizeCruckVector());
+				float DotScale = FMath::Clamp(UKismetMathLibrary::Dot_VectorVector((CruckVector / CruckVector.Size()), (Velocity / Velocity.Size())), 0, 1) + 0.5;
+				SpeedStrengthPushModificator->SelfValue = DotScale * FMath::Clamp(1 - (CruckVector.Size() / StrengthPushCruck) * InputVectorDot, 0, 1);
+				MaxWalkSpeed = SpeedModificator->ApplyModificators(MaxWalkSpeed);
+				return;
+			}
 		}
 	}
+	if (SpeedStrengthPushModificator)
+	{
+		SpeedStrengthPushModificator->SelfValue = 1.0;
+	}
+	return;
 }
 void UAgressiveMovementComponent::SetEnableClimb(bool NewEnableClimb)
 {
@@ -908,7 +937,7 @@ void UAgressiveMovementComponent::EndRunOnWallDirectly()
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Black, "TimerWallEnd");
 	}
 	JumpFromWall();
-	EndRunOnWall();
+	RemoveMoveStatus(EAgressiveMoveMode::RunOnWall);
 }
 
 void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
@@ -917,16 +946,12 @@ void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMo
 
 	if (MovementMode == EMovementMode::MOVE_Falling)
 	{
-		SpeedModificator->Modificators.Remove(SpeedStrengthPushModificator);
 		RemoveMoveStatus(EAgressiveMoveMode::Slide);
 		RemoveMoveStatus(EAgressiveMoveMode::Run);
 	}
 	else if(MovementMode == EMovementMode::MOVE_Walking || MovementMode == EMovementMode::MOVE_NavWalking)
 	{
-		SpeedStrengthPushModificator = SpeedModificator->CreateNewModificator();
-		SpeedStrengthPushModificator->SelfValue = 1;
-		SpeedStrengthPushModificator->OperationType = EModificatorOperation::Multiply;
-		EndRunOnWall();
+		RemoveMoveStatus(EAgressiveMoveMode::RunOnWall);
 		ReloadDoubleJump();
 	};
 }
@@ -1308,7 +1333,7 @@ FRotator UBaseDynamicCameraManager::CalculateApplyRotator_Implementation(float D
 	FRotator LRotator = { 0,0,0 };
 	if (CheckApplyCamera())
 	{
-		FVector LLocalTargetVector = MovementComponent->GetJumpFromCruckVector();
+		FVector LLocalTargetVector = MovementComponent->GetNormalizeCruckVector();
 		float LVelocityRotateValue =  VelocityToCameraRotation->GetFloatValue(MovementComponent->Velocity.Length());
 		float LDotToTargetRotateValue = DotToCameraRotation->GetFloatValue(MovementComponent->GetCharacterOwner()->GetActorForwardVector().Dot(LLocalTargetVector));
 		LRotator = UKismetMathLibrary::NormalizedDeltaRotator(MovementComponent->GetCharacterOwner()->GetControlRotation(),LLocalTargetVector.Rotation())*LVelocityRotateValue*LDotToTargetRotateValue;
