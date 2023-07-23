@@ -7,6 +7,9 @@
 #include "MovementCableActor.h"
 #include "FloatModificatorContextV1.h"
 #include "Camera/CameraShakeBase.h"
+#include "VisibilityTricks/VisibilityTrickObjects.h"
+#include "Tricks/TrickObjects.h"
+#include "CameraManagers/CameraManagers.h"
 #include "AgressiveMovementComponent.generated.h"
 /**
  * Небольшое объявление  о струтктуре плагина.
@@ -79,158 +82,10 @@ The plugin has a variety of auxiliary functions, such as a system of tricks and 
 
 There are some exceptions in the plugin, but those are insignificant, so it is recommended that this message be considered true in the last instance and stick to it.
 */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFinishTrick, UTrickObject*, FinisherTrickObject);
 
 
-UCLASS(Blueprintable)
-class MOVEMENTPLUGIN_API UDinamicCameraManager : public UObject
-{
-	GENERATED_BODY()
-public:
-	UPROPERTY(BlueprintReadOnly)
-	UAgressiveMovementComponent* MovementComponent;
-
-	UPROPERTY(BlueprintReadWrite)
-	FRotator ApplyRotator;
-
-	UFUNCTION(BlueprintNativeEvent)
-	void ApplyCamera(float DeltaTime);
-
-	virtual void ApplyCamera_Implementation(float DeltaTime);
-
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
-	FRotator CalculateApplyRotator(float DeltaTime);
-
-	virtual FRotator CalculateApplyRotator_Implementation(float DeltaTime);
-
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
-	bool CheckApplyCamera();
-
-	virtual bool CheckApplyCamera_Implementation();
-
-};
-
-UCLASS(Blueprintable)
-class MOVEMENTPLUGIN_API UBaseDynamicCameraManager : public UDinamicCameraManager
-{
-	GENERATED_BODY()
-
-	UBaseDynamicCameraManager();
-
-public:
-	virtual void ApplyCamera_Implementation(float DeltaTime);
-
-	virtual FRotator CalculateApplyRotator_Implementation(float DeltaTime);
-
-	virtual bool CheckApplyCamera_Implementation();
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UCurveFloat* VelocityToCameraRotation;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UCurveFloat* DotToCameraRotation;
-};
-
-UCLASS(Blueprintable)
-class MOVEMENTPLUGIN_API UTrickObject : public UObject
-{
-	GENERATED_BODY()
-public:
-	UPROPERTY(BlueprintReadOnly)
-	UAgressiveMovementComponent* MovementComponent;
-
-	UFUNCTION(BlueprintNativeEvent)
-	bool CheckTrickEnable();
-
-	virtual bool CheckTrickEnable_Implementation();
-
-	UFUNCTION(BlueprintNativeEvent)
-	void UseTrick();
-
-	virtual void UseTrick_Implementation();
-
-	UPROPERTY(BlueprintCallable, meta = (ToolTip = "Call when want end Trick"))
-	FFinishTrick FinishTrickDelegate;
-
-
-};
-
-UCLASS(Blueprintable)
-class MOVEMENTPLUGIN_API UClimbTrickObject : public UTrickObject
-{
-	GENERATED_BODY()
-public:
-	virtual bool CheckTrickEnable_Implementation();
-
-	virtual void UseTrick_Implementation();
-
-};
-
-
-UCLASS(Blueprintable)
-class MOVEMENTPLUGIN_API UCrossbarJumpTrickObject : public UClimbTrickObject
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(BlueprintReadWrite,EditInstanceOnly)
-	float TraceRadiusForward = 40;
-
-	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
-	float TraceLengthForward = 100;
-
-	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
-	float DirectStrength = 0;
-
-	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
-	bool ApplyStrengthAsVelocity = true;
-
-	virtual bool CheckTrickEnable_Implementation();
-
-	virtual void UseTrick_Implementation();
-
-};
-
-USTRUCT(Blueprintable)
-struct FAnimClimbingStruct
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UAnimMontage* AnimMontage;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float DistanceClimbStart = 10;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float NormalizeDistance = 20;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float MultyplyPriority = 2.0;
-};
-
-UCLASS(Blueprintable)
-class MOVEMENTPLUGIN_API UClimbingTopEndTrickObject : public UClimbTrickObject
-{
-	GENERATED_BODY()
-public:
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	TArray<FAnimClimbingStruct> AnimClimbingEndMontage;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float MinDotForEndTop = 0.8;
-
-	virtual bool CheckTrickEnable_Implementation();
-
-	virtual void UseTrick_Implementation();
-
-	UPROPERTY(BlueprintReadOnly)
-	FAnimClimbingStruct OptimalAnimClimbingEndMontage;
-
-	UFUNCTION()
-	void MontagePlayEndBind(UAnimMontage* Montage, bool bInterrupted);
-};
+//Система трюков делиться на Trick Object и Trick Visibility Object. Первый отвечает за физическое представление действия, а второй -  за графическое отображение
+//The trick system is divided into Trick Object and Trick Visibility Object. The first one is responsible for the physical representation of the action, and the second one is responsible for the graphical representation
 
 UENUM(Blueprintable)
 enum class EAgressiveMoveMode : uint8
@@ -361,7 +216,7 @@ public:
 	void TrickEnd(UTrickObject* FinisherTrickObject);
 
 	UFUNCTION()
-	void TickTrick();
+	void TickTrick(float DeltaTime);
 
 	//TrickEnd
 
@@ -772,15 +627,11 @@ public:
 	float FindLeadgeTraceRadius = 100;
 
 	//ParkorEnd
-	
-	//SprintMode
-
-
-	//
-	
 
 	//MainInterface
 	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode);
 	virtual void PhysFalling(float deltaTime, int32 Iterations);
 	virtual void PhysWalking(float deltaTime, int32 Iterations);
+
+	//HelperFunction
 };

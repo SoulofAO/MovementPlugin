@@ -11,6 +11,9 @@
 #include "FloatModificatorContextV1.h"
 #include "Camera/CameraShakeBase.h"
 #include "Curves/CurveFloat.h"
+#include "VisibilityTricks/VisibilityTrickObjects.h"
+#include "Tricks/TrickObjects.h"
+#include "CameraManagers/CameraManagers.h"
 
 UAgressiveMovementComponent::UAgressiveMovementComponent()
 {
@@ -242,6 +245,11 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	TickCameraManagersUpdate(DeltaTime);
 	TraceForWalkChannel();
 	CheckActiveMoveMode();
+	TickTrick(DeltaTime);
+	TickRun();
+	TickClimb();
+
+	//Debug
 	if (Debug)
 	{
 		for (EAgressiveMoveMode MoveMode : AgressiveMoveMode)
@@ -250,15 +258,10 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Green, LocalString);
 		}
 	}
-	TickTrick();
-
 	if (ExecutedTrick)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Blue, ExecutedTrick->GetName());
 	}
-
-	TickRun();
-	TickClimb();
 }
 void UAgressiveMovementComponent::TrickEnd(UTrickObject* FinisherTrickObject)
 {
@@ -346,7 +349,7 @@ UTrickObject* UAgressiveMovementComponent::GetEnableTrick()
 {
 	for (UTrickObject* LTrickObject : TrickObjects)
 	{
-		if (LTrickObject->CheckTrickEnable())
+		if (LTrickObject->CheckTrickEnable()&&LTrickObject->Enable&&LTrickObject->ReloadTimer.IsValid())
 		{
 			return LTrickObject;
 		}
@@ -605,14 +608,44 @@ void UAgressiveMovementComponent::PlayStepTick(float DeltaTime)
 		}
 	}
 }
-void UAgressiveMovementComponent::TickTrick()
+void UAgressiveMovementComponent::TickTrick(float DeltaTime)
 {
-	UTrickObject* LTrick = GetEnableTrick();
-	if (LTrick && !ExecutedTrick)
+	if (ExecutedTrick)
 	{
-		ExecutedTrick = LTrick;
-		ExecutedTrick->FinishTrickDelegate.AddDynamic(this, &UAgressiveMovementComponent::TrickEnd);
-		LTrick->UseTrick();
+		ExecutedTrick->Tick(DeltaTime);
+		if (ExecutedTrick->TrickVisibilityObject)
+		{
+			ExecutedTrick->TrickVisibilityObject->Tick(DeltaTime);
+		}
+	}
+	if (!ExecutedTrick)
+	{
+		UTrickObject* LTrick = GetEnableTrick();
+		if (LTrick)
+		{
+			if (!LTrick->TrickVisibilityObject)
+			{
+				if (LTrick->WeakTrickVisibilityObject.Get())
+				{
+					LTrick->TrickVisibilityObject = LTrick->WeakTrickVisibilityObject.Get();
+					LTrick->WeakTrickVisibilityObject = nullptr;
+				}
+				else
+				{
+					if (LTrick->TrickVisibilityClass.Get())
+					{
+						LTrick->TrickVisibilityObject = NewObject<UTrickVisibilityObject>(this, LTrick->TrickVisibilityClass);
+					}
+				}
+			}
+			ExecutedTrick = LTrick;
+			ExecutedTrick->FinishTrickDelegate.AddDynamic(this, &UAgressiveMovementComponent::TrickEnd);
+			LTrick->UseTrick();
+			if (LTrick->TrickVisibilityObject)
+			{
+				LTrick->TrickVisibilityObject->StartTrick();
+			}
+		}
 	}
 }
 void UAgressiveMovementComponent::JumpFromAllCruck(float Strength, FVector AddVector)
@@ -1196,152 +1229,5 @@ FVector UAgressiveMovementComponent::GetOptimalClimbVectorDirection()
 	return DirectionalClimbVector;
 }
 
-bool UTrickObject::CheckTrickEnable_Implementation()
-{
-	return false;
-}
 
-void UTrickObject::UseTrick_Implementation()
-{
-}
 
-bool UClimbTrickObject::CheckTrickEnable_Implementation()
-{
-	if (MovementComponent->AgressiveMoveMode.Contains(EAgressiveMoveMode::Climb))
-	{
-		return true;
-	}
-	return false;
-}
-
-void UClimbTrickObject::UseTrick_Implementation()
-{
-}
-
-bool UCrossbarJumpTrickObject::CheckTrickEnable_Implementation()
-{
-	if(Super::CheckTrickEnable_Implementation())
-	{
-		TArray<FHitResult> HitResults;
-		auto DebugTrace = [&]() {if (MovementComponent->Debug) { return EDrawDebugTrace::ForOneFrame; }; return EDrawDebugTrace::None; };
-		const TArray<AActor*> ActorIgnore;
-		UKismetSystemLibrary::SphereTraceMulti(MovementComponent->GetCharacterOwner(), MovementComponent->GetCharacterOwner()->GetActorLocation(), MovementComponent->GetCharacterOwner()->GetActorLocation() + MovementComponent->GetCharacterOwner()->GetActorForwardVector() * TraceRadiusForward, TraceRadiusForward, TraceTypeQuery1, false, ActorIgnore, DebugTrace(), HitResults, false);
-		if (HitResults.Num() > 0)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Blue, HitResults[0].GetActor()->GetName());
-			return true;
-		}
-
-	}
-	return false;
-}
-
-void UCrossbarJumpTrickObject::UseTrick_Implementation()
-{
-	ACharacter* LCharacter = MovementComponent->GetCharacterOwner();
-	float LStrength = 0.0;
-	if (ApplyStrengthAsVelocity)
-	{
-		LStrength = MovementComponent->Velocity.Length();
-	}
-	else
-	{
-		LStrength = DirectStrength;
-	}
-	MovementComponent->Launch(LCharacter->GetActorForwardVector()*LStrength);
-	FinishTrickDelegate.Broadcast(this);
-}
-
-void UDinamicCameraManager::ApplyCamera_Implementation(float DeltaTime)
-{
-}
-
-FRotator UDinamicCameraManager::CalculateApplyRotator_Implementation(float DeltaTime)
-{
-	return FRotator(0,0,1)* DeltaTime;
-}
-
-bool UDinamicCameraManager::CheckApplyCamera_Implementation()
-{
-	return true;
-}
-
-bool UClimbingTopEndTrickObject::CheckTrickEnable_Implementation()
-{
-	if (Super::CheckTrickEnable_Implementation())
-	{
-		FVector LTopVector = { 0,0,1 };
-		if (MovementComponent->OptimalLeadge.ImpactNormal.Dot(LTopVector) > MinDotForEndTop)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-void UClimbingTopEndTrickObject::UseTrick_Implementation()
-{
-	Super::UseTrick_Implementation();
-	float MinResult = -1;
-	float LDistance = MovementComponent->OptimalLeadge.ImpactPoint.Z - MovementComponent->GetCharacterOwner()->GetActorLocation().Z;
-	FAnimClimbingStruct LOptimalClimbingMontage;
-	for (FAnimClimbingStruct LAnimClimbingEndMontage : AnimClimbingEndMontage)
-	{
-		if (LAnimClimbingEndMontage.AnimMontage)
-		{
-			float LDistanceOptimal = (1 - (LAnimClimbingEndMontage.DistanceClimbStart - LDistance) / LAnimClimbingEndMontage.NormalizeDistance);
-			if (LDistanceOptimal > MinResult)
-			{
-				LOptimalClimbingMontage = LAnimClimbingEndMontage;
-				MinResult = LDistanceOptimal;
-			}
-		}
-	}
-	OptimalAnimClimbingEndMontage = LOptimalClimbingMontage;
-	MovementComponent->GetCharacterOwner()->PlayAnimMontage(LOptimalClimbingMontage.AnimMontage);
-	MovementComponent->GetCharacterOwner()->GetMesh()->GetAnimInstance()->OnMontageEnded.AddDynamic(this, &UClimbingTopEndTrickObject::MontagePlayEndBind);
-}
-
-void UClimbingTopEndTrickObject::MontagePlayEndBind(UAnimMontage* Montage, bool bInterrupted)
-{
-	if (Montage == OptimalAnimClimbingEndMontage.AnimMontage)
-	{
-		MovementComponent->GetCharacterOwner()->GetMesh()->GetAnimInstance()->OnMontageEnded.RemoveDynamic(this, &UClimbingTopEndTrickObject::MontagePlayEndBind);
-		FinishTrickDelegate.Broadcast(this);
-		if (MovementComponent->CheckInputClimb())
-		{
-			MovementComponent->RemoveMoveStatus(EAgressiveMoveMode::Climb);
-		}
-	}
-}
-
-UBaseDynamicCameraManager::UBaseDynamicCameraManager()
-{
-	VelocityToCameraRotation = LoadObject<UCurveFloat>(nullptr, TEXT("/Game/Plugins/MovementPlugin/Content/Other/BaseVelocityToCameraRotation.uasset"));
-	DotToCameraRotation = LoadObject<UCurveFloat>(nullptr, TEXT("/Game/Plugins/MovementPlugin/Content/Other/BaseRotationToCameraRotation.uasset"));
-}
-
-void UBaseDynamicCameraManager::ApplyCamera_Implementation(float DeltaTime)
-{
-	APlayerController* PlayerController = Cast<APlayerController>(MovementComponent->GetCharacterOwner()->GetController());
-	FRotator Rotation = PlayerController->GetControlRotation() + CalculateApplyRotator(DeltaTime);
-	PlayerController->SetControlRotation(Rotation);
-}
-
-FRotator UBaseDynamicCameraManager::CalculateApplyRotator_Implementation(float DeltaTime)
-{
-	FRotator LRotator = { 0,0,0 };
-	if (CheckApplyCamera())
-	{
-		FVector LLocalTargetVector = MovementComponent->GetNormalizeCruckVector();
-		float LVelocityRotateValue =  VelocityToCameraRotation->GetFloatValue(MovementComponent->Velocity.Length());
-		float LDotToTargetRotateValue = DotToCameraRotation->GetFloatValue(MovementComponent->GetCharacterOwner()->GetActorForwardVector().Dot(LLocalTargetVector));
-		LRotator = UKismetMathLibrary::NormalizedDeltaRotator(MovementComponent->GetCharacterOwner()->GetControlRotation(),LLocalTargetVector.Rotation())*LVelocityRotateValue*LDotToTargetRotateValue;
-	}
-	return LRotator;
-}
-
-bool UBaseDynamicCameraManager::CheckApplyCamera_Implementation()
-{
-	return (MovementComponent->GetEnableCruck() && MovementComponent->MovementMode == EMovementMode::MOVE_Falling && MovementComponent->Cabels.IsValidIndex(0));
-}
