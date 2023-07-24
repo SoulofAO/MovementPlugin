@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
+#include "Curves/CurveVector.h"
 #include "TrickObjects.generated.h"
 
 /**
@@ -60,7 +61,7 @@ public:
 	FFinishTrick FinishTrickDelegate;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	bool Enable = false;
+	bool Enable = true;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float ReloadTime = 0.5;
@@ -139,10 +140,18 @@ public:
 	UPROPERTY(BlueprintReadOnly)
 	FVector StartLocation;
 
-	UFUNCTION(BlueprintNativeEvent)
-	void MoveToPoint();
+	UPROPERTY(BlueprintReadOnly)
+	FVector EndLocation;
 
-	virtual void MoveToPoint_Implementation();
+	UFUNCTION(BlueprintNativeEvent)
+	void MoveToPoint(FVector Point);
+
+	virtual void MoveToPoint_Implementation(FVector Point);
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
+	void EndMovePoint();
+
+	virtual void EndMovePoint_Implementation();
 
 	virtual void Tick_Implementation(float DeltaTime);
 };
@@ -154,7 +163,7 @@ class MOVEMENTPLUGIN_API UClimbingTopEndTrickObject : public UClimbingUpTrickObj
 
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-		float MinDotForEndTop = 0.8;
+	float MinDotForEndTop = 0.8;
 
 	virtual bool CheckTrickEnable_Implementation();
 

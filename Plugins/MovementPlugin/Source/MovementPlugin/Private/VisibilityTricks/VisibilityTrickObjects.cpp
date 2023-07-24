@@ -60,3 +60,8 @@ void UMontageTrickVisibility::MontagePlayEndBind(UAnimMontage* Montage, bool bIn
 		MovementComponent->GetCharacterOwner()->GetMesh()->GetAnimInstance()->OnMontageEnded.RemoveDynamic(this, &UMontageTrickVisibility::MontagePlayEndBind);
 	}
 }
+
+void UPlayOneMontageTrickVisibility::StartTrick_Implementation()
+{
+	MovementComponent->GetCharacterOwner()->GetMesh()->GetAnimInstance()->Montage_Play(AnimMontage);
+}

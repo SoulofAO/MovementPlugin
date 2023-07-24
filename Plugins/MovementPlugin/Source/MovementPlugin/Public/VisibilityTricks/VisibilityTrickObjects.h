@@ -81,3 +81,15 @@ public:
 	void MontagePlayEndBind(UAnimMontage* Montage, bool bInterrupted);
 };
 
+UCLASS(Blueprintable, Abstract)
+class MOVEMENTPLUGIN_API UPlayOneMontageTrickVisibility : public UTrickVisibilityObject
+{
+	GENERATED_BODY()
+public:
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	UAnimMontage* AnimMontage;
+
+	virtual void StartTrick_Implementation();
+
+};

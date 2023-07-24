@@ -106,29 +106,44 @@ bool UClimbingTopEndTrickObject::CheckTrickEnable_Implementation()
 
 void UClimbingTopEndTrickObject::UseTrick_Implementation()
 {
+	MoveToPoint(MovementComponent->OptimalLeadge.ImpactPoint);
 }
 
 
 bool UClimbingUpTrickObject::CheckTrickEnable_Implementation()
 {
-	return true;
+	return MovementComponent->AgressiveMoveMode.Contains(EAgressiveMoveMode::Climb);
 }
 
 void UClimbingUpTrickObject::UseTrick_Implementation()
 {
-	MoveToPoint();
+	MoveToPoint(MovementComponent->OptimalLeadge.ImpactPoint);
 }
 
-void UClimbingUpTrickObject::MoveToPoint_Implementation()
+void UClimbingUpTrickObject::MoveToPoint_Implementation(FVector Point)
 {
 	EnableMove = true;
 	TickTime = 0;
 	StartLocation = MovementComponent->GetCharacterOwner()->GetActorLocation();
+	EndLocation = MovementComponent->OptimalLeadge.ImpactPoint;
+}
+
+void UClimbingUpTrickObject::EndMovePoint_Implementation()
+{
+	FinishTrickDelegate.Broadcast(this);
 }
 
 void UClimbingUpTrickObject::Tick_Implementation(float DeltaTime)
 {
-	TickTime = DeltaTime + TickTime;
-	FVector LNewLocation = CurveAddLocation->GetVectorValue(TickTime) + UKismetMathLibrary::VLerp(StartLocation, MovementComponent->OptimalLeadge.ImpactPoint, TickTime / DirectTime);
+	TickTime = UKismetMathLibrary::FClamp(DeltaTime + TickTime,0,1);
+	FVector LNewLocation = UKismetMathLibrary::VLerp(StartLocation, EndLocation, TickTime / DirectTime);
+	if (CurveAddLocation)
+	{
+		LNewLocation = LNewLocation + CurveAddLocation->GetVectorValue(TickTime / DirectTime);
+	}
 	MovementComponent->GetCharacterOwner()->SetActorLocation(LNewLocation);
+	if (TickTime >= 1)
+	{
+		EndMovePoint();
+	}
 }

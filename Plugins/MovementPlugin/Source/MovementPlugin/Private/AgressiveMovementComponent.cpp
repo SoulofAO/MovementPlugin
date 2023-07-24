@@ -266,6 +266,16 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 void UAgressiveMovementComponent::TrickEnd(UTrickObject* FinisherTrickObject)
 {
 	ExecutedTrick->FinishTrickDelegate.RemoveDynamic(this, &UAgressiveMovementComponent::TrickEnd);
+	if (!ExecutedTrick->SaveTrickVisibilityObject)
+	{
+		ExecutedTrick->WeakTrickVisibilityObject = ExecutedTrick->TrickVisibilityObject;
+		ExecutedTrick->TrickVisibilityObject = nullptr;
+	}
+	if (ExecutedTrick->TrickVisibilityObject)
+	{
+		ExecutedTrick->TrickVisibilityObject->EndTrick();
+	}
+	ExecutedTrick->StartReloadTimer();
 	ExecutedTrick = nullptr;
 }
 
@@ -349,7 +359,7 @@ UTrickObject* UAgressiveMovementComponent::GetEnableTrick()
 {
 	for (UTrickObject* LTrickObject : TrickObjects)
 	{
-		if (LTrickObject->CheckTrickEnable()&&LTrickObject->Enable&&LTrickObject->ReloadTimer.IsValid())
+		if (LTrickObject->CheckTrickEnable()&&LTrickObject->Enable&&!LTrickObject->ReloadTimer.IsValid())
 		{
 			return LTrickObject;
 		}
@@ -613,6 +623,9 @@ void UAgressiveMovementComponent::TickTrick(float DeltaTime)
 	if (ExecutedTrick)
 	{
 		ExecutedTrick->Tick(DeltaTime);
+	}
+	if (ExecutedTrick)
+	{
 		if (ExecutedTrick->TrickVisibilityObject)
 		{
 			ExecutedTrick->TrickVisibilityObject->Tick(DeltaTime);
@@ -634,7 +647,10 @@ void UAgressiveMovementComponent::TickTrick(float DeltaTime)
 				{
 					if (LTrick->TrickVisibilityClass.Get())
 					{
-						LTrick->TrickVisibilityObject = NewObject<UTrickVisibilityObject>(this, LTrick->TrickVisibilityClass);
+						UTrickVisibilityObject* LNewTrick = NewObject<UTrickVisibilityObject>(this, LTrick->TrickVisibilityClass);
+						LTrick->TrickVisibilityObject = LNewTrick;
+						LNewTrick->MovementComponent = this;
+						LNewTrick->TrickObject = LTrick;
 					}
 				}
 			}
