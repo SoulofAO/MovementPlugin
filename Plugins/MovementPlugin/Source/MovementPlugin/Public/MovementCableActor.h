@@ -57,7 +57,7 @@ public:
 	float MaxCableLength = 1000;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float CableStiffness = 1;
+	float CableStiffness = 0.3;
 
 	UPROPERTY(BlueprintReadOnly,EditAnywhere)
 	USceneComponent* SceneComponentHand;

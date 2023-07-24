@@ -397,7 +397,7 @@ public:
 	float LengthCruck = 1000;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float StrengthPushCruck = 100;
+	float StrengthPushCruck = 20000;
 
 	UPROPERTY(BlueprintReadOnly)
 	UFloatModificator* SpeedStrengthPushModificator;
@@ -632,6 +632,9 @@ public:
 	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode);
 	virtual void PhysFalling(float deltaTime, int32 Iterations);
 	virtual void PhysWalking(float deltaTime, int32 Iterations);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float AirFrenselCoifficient = 0.5;
 
 	//HelperFunction
 };

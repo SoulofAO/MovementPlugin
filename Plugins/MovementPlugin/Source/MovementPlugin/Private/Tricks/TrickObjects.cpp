@@ -8,6 +8,7 @@
 #include "GameFramework/Character.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Curves/CurveVector.h"
+#include "Components/CapsuleComponent.h"
 
 UWorld* UTrickObject::GetWorld() const
 {
@@ -106,7 +107,9 @@ bool UClimbingTopEndTrickObject::CheckTrickEnable_Implementation()
 
 void UClimbingTopEndTrickObject::UseTrick_Implementation()
 {
-	MoveToPoint(MovementComponent->OptimalLeadge.ImpactPoint);
+	float HalfHead = MovementComponent->GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() ;
+	FVector AddLocation = { 0,0, HalfHead};
+	MoveToPoint(MovementComponent->OptimalLeadge.ImpactPoint + AddLocation);
 }
 
 
@@ -125,7 +128,7 @@ void UClimbingUpTrickObject::MoveToPoint_Implementation(FVector Point)
 	EnableMove = true;
 	TickTime = 0;
 	StartLocation = MovementComponent->GetCharacterOwner()->GetActorLocation();
-	EndLocation = MovementComponent->OptimalLeadge.ImpactPoint;
+	EndLocation = Point;
 }
 
 void UClimbingUpTrickObject::EndMovePoint_Implementation()
