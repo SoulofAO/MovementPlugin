@@ -65,6 +65,6 @@ public:
 	UPROPERTY(BlueprintReadOnly, EditAnywhere)
 	USceneComponent* SceneComponentHook;
 
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, EditAnywhere)
 	TArray<UCableComponent*> CableComponents;
 };

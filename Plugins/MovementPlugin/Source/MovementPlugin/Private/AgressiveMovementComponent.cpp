@@ -17,7 +17,6 @@
 
 UAgressiveMovementComponent::UAgressiveMovementComponent()
 {
-	DefaultMaxWalkSpeed = MaxWalkSpeed;
 	MaxAcceleration = 600;
 	FallingLateralFriction = 0.1;
 }
@@ -213,12 +212,14 @@ void UAgressiveMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	SpeedModificator = NewObject<UFloatModificatorContext>(this, "SpeedModificator");
+	AccelerationModificator = NewObject<UFloatModificatorContext>(this, "AccelerationModificator");
 	StaminaModificator = NewObject<UFloatModificatorContext>(this, "StaminaModificator");
-
+	MaxWalkSpeedModificator = NewObject<UFloatModificatorContext>(this, "MaxWalkSpeedModificator");
 
 	AddStaminaModificator(BaseAddStaminaValue, "BaseAddModificator");
+
 	DefaultCharacterSize = GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	DefaultMaxWalkSpeed = MaxWalkSpeed;
 	DefaultMaxAcceleration = MaxAcceleration;
 	for (TSubclassOf<UTrickObject> LClassTrickObject : StartTrickObjects)
 	{
@@ -287,9 +288,9 @@ void UAgressiveMovementComponent::BeginDestroy()
 	{
 		StaminaModificator->Modificators.Empty();
 	}
-	if (SpeedModificator)
+	if (AccelerationModificator)
 	{
-		SpeedModificator->Modificators.Empty();
+		AccelerationModificator->Modificators.Empty();
 	}
 }
 void UAgressiveMovementComponent::SetEnableRun(bool NewEnableRun)
@@ -312,16 +313,31 @@ bool UAgressiveMovementComponent::GetEnableRun()
 
 void UAgressiveMovementComponent::StartRun()
 {
-	if (!SpeedRunModificator)
+	if (!RunMaxSpeedModification)
 	{
-		SpeedRunModificator = SpeedModificator->CreateNewModificator();
-		SpeedRunModificator->OperationType = EModificatorOperation::Multiply;
+		RunMaxSpeedModification = MaxWalkSpeedModificator->CreateNewModificator();
+		RunMaxSpeedModification->OperationType = EModificatorOperation::Multiply;
+
 	}
-	if (SpeedRunModificator)
+	if (RunMaxSpeedModification)
 	{
-		SpeedRunModificator->SelfValue = SpeedRunMultiply;
+		RunMaxSpeedModification->SelfValue = SpeedRunMultiply;
 	}
-	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
+	MaxWalkSpeed = MaxWalkSpeedModificator->ApplyModificators(DefaultMaxWalkSpeed);
+
+
+	if (!RunAccelerationModification)
+	{
+		RunAccelerationModification = AccelerationModificator->CreateNewModificator();
+		RunAccelerationModification->OperationType = EModificatorOperation::Multiply;
+	}
+	if (RunAccelerationModification)
+	{
+		RunAccelerationModification->SelfValue = AccelerationRunMultiply;
+	}
+
+
+	MaxAcceleration = AccelerationModificator->ApplyModificators(DefaultMaxAcceleration);
 	RunStaminaModificator = AddStaminaModificator(LowStaminaRunValue,"Run");
 	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRun);
 }
@@ -329,13 +345,16 @@ void UAgressiveMovementComponent::StartRun()
 void UAgressiveMovementComponent::EndRun()
 {
 	EndStaminaDelegate.RemoveDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRun);
-	if (SpeedRunModificator)
+	if (RunAccelerationModification)
 	{
-		SpeedRunModificator->SelfValue = 1.0;
+		RunAccelerationModification->SelfValue = 1.0;
 	}
-	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
+	if (RunMaxSpeedModification)
+	{
+		RunMaxSpeedModification->SelfValue = 1.0;
+	}
+	MaxAcceleration = AccelerationModificator->ApplyModificators(DefaultMaxAcceleration);
 	RemoveStaminaModificator("Run");
-	RunStaminaModificator = nullptr;
 }
 
 void UAgressiveMovementComponent::StartRunInput()
@@ -469,11 +488,11 @@ void UAgressiveMovementComponent::StartSlide()
 	GroundFriction = GroundFrictionWhenSliding;
 	BrakingDecelerationWalking = GroundBrakingWhenSliding;
 	GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), SlideCharacterSize);
-	UFloatModificator* FloatModificator = SpeedModificator->CreateNewModificator();
+	UFloatModificator* FloatModificator = AccelerationModificator->CreateNewModificator();
 	FloatModificator->SelfValue = 0;
 	FloatModificator->Name = "Slide";
 	FloatModificator->OperationType = EModificatorOperation::Multiply;
-	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
+	MaxAcceleration = AccelerationModificator->ApplyModificators(DefaultMaxAcceleration);
 }
 
 
@@ -486,16 +505,21 @@ void UAgressiveMovementComponent::TickRun()
 {
 	if (AgressiveMoveMode.Contains(EAgressiveMoveMode::Run))
 	{
-		if (UKismetMathLibrary::Dot_VectorVector(GetLastInputVector(), GetCharacterOwner()->GetActorForwardVector()) > 0)
+		float DotScale = UKismetMathLibrary::Dot_VectorVector(GetLastInputVector(), GetCharacterOwner()->GetActorForwardVector());
+		if(DotScale<0)
 		{
-			RunStaminaModificator->SelfValue = LowStaminaRunValue;
-			SpeedRunModificator->SelfValue = SpeedRunMultiply;
+			RunStaminaModificator->SelfValue = 0;
+			RunAccelerationModification->SelfValue = 1.0;
+			RunMaxSpeedModification->SelfValue = 1.0;
 		}
 		else
 		{
-			RunStaminaModificator->SelfValue = 0;
-			SpeedRunModificator->SelfValue = 1.0;
+			DotScale = DotScale + 1;
+			RunStaminaModificator->SelfValue = LowStaminaRunValue * DotScale;
+			RunAccelerationModification->SelfValue = AccelerationRunMultiply * DotScale;
+			RunMaxSpeedModification->SelfValue = SpeedRunMultiply * DotScale;
 		}
+
 	}
 }
 
@@ -504,8 +528,8 @@ void UAgressiveMovementComponent::EndSlide()
 	GroundFriction = DefaultGroundFriction;
 	BrakingDecelerationWalking = DefailtGroundBraking;
 	GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), DefaultCharacterSize);
-	SpeedModificator->RemoveModificatorByName("Slide");
-	MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
+	AccelerationModificator->RemoveModificatorByName("Slide");
+	MaxAcceleration = AccelerationModificator->ApplyModificators(DefaultMaxAcceleration);
 }
 
 
@@ -829,36 +853,42 @@ void UAgressiveMovementComponent::CruckWalkingTick(float Delta)
 {
 	if (GetEnableCruck())
 	{
-		FVector CruckVector = GetApplyCruck();
-		float LStrengthCruck = CruckVector.Length();
-		if (!CruckVector.IsNearlyZero())
+		if (Cabels.IsValidIndex(0))
 		{
-			if (!SpeedStrengthPushModificator)
+			FVector CruckVector = GetApplyCruck();
+			float LStrengthCruck = CruckVector.Length();
+			if (!CruckVector.IsNearlyZero())
 			{
-				SpeedStrengthPushModificator = SpeedModificator->CreateNewModificator();
-				SpeedStrengthPushModificator->Name = "SpeedStrengthPushModificator";
-				SpeedStrengthPushModificator->SelfValue = 1;
-				SpeedStrengthPushModificator->OperationType = EModificatorOperation::Multiply;
-			}
-			if (SpeedStrengthPushModificator)
-			{
-				CruckVector = { CruckVector.X,CruckVector.Y,0 };
-				UKismetMathLibrary::Vector_Normalize(CruckVector);
-				float InputVectorDot = GetLastInputVector().Dot(GetNormalizeCruckVector());
-				float LValueSpeedModificator = ((InputVectorDot + 1.0) / 2+0.5) * (FMath::Clamp(1 - LStrengthCruck / StrengthPushCruck, 0.1, 1));
-				SpeedStrengthPushModificator->SelfValue = LValueSpeedModificator;
-				GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Red, FString::SanitizeFloat(LValueSpeedModificator));
-				MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
-				return;
+				if (!SpeedStrengthPushModificator)
+				{
+					SpeedStrengthPushModificator = MaxWalkSpeedModificator->CreateNewModificator();
+					SpeedStrengthPushModificator->Name = "SpeedStrengthPushModificator";
+					SpeedStrengthPushModificator->SelfValue = 1;
+					SpeedStrengthPushModificator->OperationType = EModificatorOperation::Multiply;
+				}
+				if (SpeedStrengthPushModificator)
+				{
+					CruckVector = { CruckVector.X,CruckVector.Y,0 };
+					UKismetMathLibrary::Vector_Normalize(CruckVector);
+					float InputVectorDot = GetLastInputVector().Dot(GetNormalizeCruckVector());
+					float LValueSpeedModificator = ((InputVectorDot + 1.0) / 2 + 0.5) * (FMath::Clamp(1 - LStrengthCruck / StrengthPushCruck, 0.1, 1));
+					SpeedStrengthPushModificator->SelfValue = LValueSpeedModificator;
+					if (Debug)
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Red, FString::SanitizeFloat(LValueSpeedModificator));
+					}
+					MaxWalkSpeed = MaxWalkSpeedModificator->ApplyModificators(DefaultMaxWalkSpeed);
+					return;
+				}
 			}
 		}
-	}
-	else
-	{
-		if (SpeedStrengthPushModificator)
+		else
 		{
-			SpeedStrengthPushModificator->SelfValue = 1.0;
-			MaxAcceleration = SpeedModificator->ApplyModificators(DefaultMaxAcceleration);
+			if (SpeedStrengthPushModificator)
+			{
+				SpeedStrengthPushModificator->SelfValue = 1.0;
+				MaxWalkSpeed = MaxWalkSpeedModificator->ApplyModificators(DefaultMaxWalkSpeed);
+			}
 		}
 	}
 	return;

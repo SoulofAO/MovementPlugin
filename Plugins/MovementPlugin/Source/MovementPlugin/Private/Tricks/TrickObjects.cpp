@@ -99,7 +99,13 @@ bool UClimbingTopEndTrickObject::CheckTrickEnable_Implementation()
 		FVector LTopVector = { 0,0,1 };
 		if (MovementComponent->OptimalLeadge.ImpactNormal.Dot(LTopVector) > MinDotForEndTop)
 		{
-			return true;
+			FVector LEndLocation = MovementComponent->OptimalLeadge.ImpactPoint + (0, 0, MovementComponent->GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+10.0);
+			FQuat LBaseQuat;
+			FCollisionShape LShape = MovementComponent->GetCharacterOwner()->GetCapsuleComponent()->GetCollisionShape(0.000001);
+			if (!GetWorld()->OverlapBlockingTestByProfile(LEndLocation, LBaseQuat, "NAME_Pawn", LShape))
+			{
+				return true;
+			}
 		}
 	}
 	return false;

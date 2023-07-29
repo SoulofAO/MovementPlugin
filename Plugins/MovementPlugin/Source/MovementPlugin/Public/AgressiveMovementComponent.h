@@ -243,8 +243,11 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	float AccelerationRunMultiply = 2;
 
-	UPROPERTY(Transient)
-    UFloatModificatorContext* SpeedModificator;
+	UPROPERTY(Transient,BlueprintReadOnly)
+    UFloatModificatorContext* AccelerationModificator;
+
+	UPROPERTY(Transient, BlueprintReadOnly)
+	UFloatModificatorContext* MaxWalkSpeedModificator;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StepSensorEvent|Shake")
 	TSubclassOf<UCameraShakeBase> WalkCameraShake;
@@ -286,7 +289,10 @@ public:
 	TSubclassOf<UCameraShakeBase> RunCameraShake;
 
 	UPROPERTY(BlueprintReadOnly)
-	UFloatModificator* SpeedRunModificator;
+	UFloatModificator* RunAccelerationModification;
+
+	UPROPERTY(BlueprintReadOnly)
+	UFloatModificator* RunMaxSpeedModification;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StepSensorEvent|Sound")
 	USoundBase* SoundRunStep;
