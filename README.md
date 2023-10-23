@@ -6,4 +6,4 @@ You can use this plugin, but please note that this plugin is under development, 
 Since there are others interested in his work, I am publishing his primary version. At the moment, it requires significant polishing.
 The comments are duplicated in Russian and English.
 
-23.10.2023. Add Priority Input System. Not Sure that all work ok.
+23.10.2023. Add Priority Input System. Now, for example, exhaling the character starts running again after a short time. Improved the code. Change Naming convention.
