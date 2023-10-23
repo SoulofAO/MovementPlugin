@@ -21,70 +21,86 @@ UAgressiveMovementComponent::UAgressiveMovementComponent()
 	FallingLateralFriction = 0.1;
 }
 
-void UAgressiveMovementComponent::CheckActiveMoveMode()
+void UAgressiveMovementComponent::CheckActivateMoveMode(float DeltaTime)
 {
 	for (int count = 0; count < NotActiveAgressiveMoveMode.Num(); count++)
 	{
-		FAgressiveMoveModeInput LocalAgressiveMoveMode = NotActiveAgressiveMoveMode[count];
-		switch (LocalAgressiveMoveMode.AgressiveMoveMode)
+		FAgressiveMoveModeInput* LocalAgressiveMoveMode = &NotActiveAgressiveMoveMode[count];
+		if(LocalAgressiveMoveMode->Time>0)
 		{
-		case EAgressiveMoveMode::Run:
-			bool ActiveSlide = false;
-			FindActiveMoveModeInput(EAgressiveMoveMode::Slide, ActiveSlide)
-			if ((MovementMode == EMovementMode::MOVE_Walking) && !ActiveSlide))
-			{
-				AddMoveStatus(LocalAgressiveMoveMode);
-				count--;
-			}
-			break;
-
-		case EAgressiveMoveMode::Slide:
-		{
-			FVector NormilizeMultiplier = { 1.0,1.0,0 };
-			FVector LocalNormaliaizeVelocity = GetCharacterOwner()->GetVelocity() * NormilizeMultiplier;
-			if ((LocalNormaliaizeVelocity.Length() > MinSpeedForSliding) && MovementMode == EMovementMode::MOVE_Falling)
-			{
-				AddMoveStatus(LocalAgressiveMoveMode);
-				count--;
-			}
-			break; 
+			LocalAgressiveMoveMode->Time = LocalAgressiveMoveMode->Time - DeltaTime;
 		}
-		case EAgressiveMoveMode::RunOnWall:
+		else
 		{
-			if ((MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess)
+			switch (LocalAgressiveMoveMode->AgressiveMoveMode)
 			{
-				AddMoveStatus(LocalAgressiveMoveMode);
-				count--;
-			}
-			break;
-		}
+			case EAgressiveMoveMode::Run:
+				if ((MovementMode == EMovementMode::MOVE_Walking) && !ContainsActiveMoveModeInput(EAgressiveMoveMode::Slide))
+				{
+					AddMoveStatus(*LocalAgressiveMoveMode);
+					count--;
+				}
+				break;
 
-		case EAgressiveMoveMode::Climb:
-		{
-			if (CheckInputClimb()&&(MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess)
+			case EAgressiveMoveMode::Slide:
 			{
-				AddMoveStatus(LocalAgressiveMoveMode);
-				count--;
+				FVector NormilizeMultiplier = { 1.0,1.0,0 };
+				FVector LocalNormaliaizeVelocity = GetCharacterOwner()->GetVelocity() * NormilizeMultiplier;
+				if ((LocalNormaliaizeVelocity.Length() > MinSpeedForSliding) && MovementMode == EMovementMode::MOVE_Falling)
+				{
+					AddMoveStatus(*LocalAgressiveMoveMode);
+					count--;
+				}
+				break;
 			}
+			case EAgressiveMoveMode::RunOnWall:
+			{
+				if ((MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess)
+				{
+					AddMoveStatus(*LocalAgressiveMoveMode);
+					count--;
+				}
+				break;
+			}
+
+			case EAgressiveMoveMode::Climb:
+			{
+				if (CheckInputClimb() && (MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess)
+				{
+					AddMoveStatus(*LocalAgressiveMoveMode);
+					count--;
+				}
+				break;
+			};
 			break;
-		};
-		break;
+			}
 		}
 	}
 }
 
-void UAgressiveMovementComponent::AddNotActiveAgressiveModeInput(FAgressiveMoveModeInput NewAgressiveMoveModeInput)
+void UAgressiveMovementComponent::AddNotActiveAgressiveModeInput(FAgressiveMoveModeInput NewAgressiveMoveModeInput, float DirectTimeToActive)
 {
-	int count = 0;
-	for (FAgressiveMoveModeInput LocalMoveMode : NotActiveAgressiveMoveMode)
+	if (!ContainsNotActiveMoveModeInput(NewAgressiveMoveModeInput.AgressiveMoveMode) && !ContainsActiveMoveModeInput(NewAgressiveMoveModeInput.AgressiveMoveMode))
 	{
-		if (LocalMoveMode.Priority > NewAgressiveMoveModeInput.Priority)
+		if (DirectTimeToActive>=0.0)
 		{
-			break;
+			NewAgressiveMoveModeInput.Time = DirectTimeToActive;
 		}
-		count = count + 1;
+		else
+		{
+			NewAgressiveMoveModeInput.InitializeTimeAsDefaultTime();
+		}
+		int count = 0;
+		for (FAgressiveMoveModeInput LocalMoveMode : NotActiveAgressiveMoveMode)
+		{
+			if (LocalMoveMode.Priority > NewAgressiveMoveModeInput.Priority)
+			{
+				break;
+			}
+			count = count + 1;
+		}
+		NotActiveAgressiveMoveMode.Insert(NewAgressiveMoveModeInput, count);
 	}
-	NotActiveAgressiveMoveMode.Insert(NewAgressiveMoveModeInput, count);
 }
 
 FAgressiveMoveModeInput UAgressiveMovementComponent::FindActiveMoveModeInput(EAgressiveMoveMode MoveMode, bool& Sucsess)
@@ -193,15 +209,17 @@ void UAgressiveMovementComponent::AddMoveStatus(FAgressiveMoveModeInput NewAgres
 {
 	RemoveNotActiveAgressiveModeInputByMode(NewAgressiveMoveMode.AgressiveMoveMode);
 	TArray<FAgressiveMoveModeInput> OldAgressiveMode = ActiveAgressiveMoveMode;
-	ActiveAgressiveMoveMode.Add(NewAgressiveMoveMode);
-	if (NotActiveAgressiveMoveMode.Contains(NewAgressiveMoveMode))
+	if (true)
+	{
+		ActiveAgressiveMoveMode.Add(NewAgressiveMoveMode);
+
 		switch (NewAgressiveMoveMode.AgressiveMoveMode)
 		{
 		case EAgressiveMoveMode::None:
 			break;
 		case EAgressiveMoveMode::Slide:
-			RemoveMoveStatusByMode(NewAgressiveMoveMode.AgressiveMoveMode);
-			if (ActiveAgressiveMoveMode.Contains(EAgressiveMoveMode::RunOnWall))
+			RemoveMoveStatusByMode(EAgressiveMoveMode::Run);
+			if (ContainsActiveMoveModeInput(EAgressiveMoveMode::RunOnWall))
 			{
 				RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
 			}
@@ -222,51 +240,59 @@ void UAgressiveMovementComponent::AddMoveStatus(FAgressiveMoveModeInput NewAgres
 		default:
 			break;
 		}
+	}
+};
+
+void UAgressiveMovementComponent::RemoveMoveStatusByMode(EAgressiveMoveMode RemoveAgressiveMoveMode, bool SendToInput, float DirectReloadTime)
+{
+	if (ContainsActiveMoveModeInput(RemoveAgressiveMoveMode))
+	{
+		SwitchRemoveModeStatus(RemoveAgressiveMoveMode);
+		if (SendToInput)
+		{
+			bool LSucsess = true;
+			FAgressiveMoveModeInput RemoveAgressiveAgressive = FindActiveMoveModeInput(RemoveAgressiveMoveMode, LSucsess);
+			RemoveActiveAgressiveModeInputByMode(RemoveAgressiveMoveMode);
+			if (LSucsess)
+			{
+				AddNotActiveAgressiveModeInput(RemoveAgressiveAgressive, DirectReloadTime);
+			}
+		}
+		else
+		{
+			RemoveActiveAgressiveModeInputByMode(RemoveAgressiveMoveMode);
+		}
+	}
 }
 
-void UAgressiveMovementComponent::RemoveMoveStatusByMode(EAgressiveMoveMode RemoveAgressiveMoveMode, bool SendToInput)
+void UAgressiveMovementComponent::RemoveMoveStatusByInput(FAgressiveMoveModeInput RemoveAgressiveMoveModeInput, bool SendToInput, float DirectReloadTime)
 {
-	SwitchRemoveModeStatus(RemoveAgressiveMoveMode);
-	if (SendToInput)
+	if (ContainsActiveMoveModeInput(RemoveAgressiveMoveModeInput.AgressiveMoveMode))
 	{
-		bool LSucsess = true;
-		FAgressiveMoveModeInput RemoveAgressiveAgressive = FindActiveMoveModeInput(RemoveAgressiveMoveMode, LSucsess);
-		if (LSucsess)
+		SwitchRemoveModeStatus(RemoveAgressiveMoveModeInput.AgressiveMoveMode);
+		if (SendToInput)
 		{
-			AddNotActiveAgressiveModeInput(RemoveAgressiveAgressive);
+			RemoveActiveAgressiveModeInputByMode(RemoveAgressiveMoveModeInput.AgressiveMoveMode);
+			AddNotActiveAgressiveModeInput(RemoveAgressiveMoveModeInput, DirectReloadTime);
 		}
-		RemoveActiveAgressiveModeInputByMode(RemoveAgressiveMoveMode);
+		else
+		{
+			RemoveActiveAgressiveModeInputByMode(RemoveAgressiveMoveModeInput.AgressiveMoveMode);
+		}
 	}
-	else
-	{
-		RemoveActiveAgressiveModeInputByMode(RemoveAgressiveMoveMode);
-	}
-
 }
 
-void UAgressiveMovementComponent::RemoveMoveStatusByInput(FAgressiveMoveModeInput RemoveAgressiveMoveModeInput, bool SendToInput)
+void UAgressiveMovementComponent::ForceRemoveMoveStatusAndInputByMode(EAgressiveMoveMode RemoveAgressiveMoveMode)
 {
-	SwitchRemoveModeStatus(RemoveAgressiveMoveModeInput.AgressiveMoveMode);
-	if (SendToInput)
-	{
-		bool LSucsess = true;
-		if (LSucsess)
-		{
-			AddNotActiveAgressiveModeInput(RemoveAgressiveMoveModeInput);
-		}
-		RemoveActiveAgressiveModeInputByMode(RemoveAgressiveMoveModeInput.AgressiveMoveMode);
-	}
-	else
-	{
-		RemoveActiveAgressiveModeInputByMode(RemoveAgressiveMoveModeInput.AgressiveMoveMode);
-	}
+	RemoveNotActiveAgressiveModeInputByMode(RemoveAgressiveMoveMode);
+	RemoveMoveStatusByMode(RemoveAgressiveMoveMode, false);
 }
 
 void UAgressiveMovementComponent::SwitchRemoveModeStatus(EAgressiveMoveMode RemoveAgressiveMoveMode)
 {
 	TArray<FAgressiveMoveModeInput> OldAgressiveMode = ActiveAgressiveMoveMode;
 
-	if (ActiveAgressiveMoveMode.Contains(RemoveAgressiveMoveMode))
+	if (ContainsActiveMoveModeInput(RemoveAgressiveMoveMode))
 	{
 		switch (RemoveAgressiveMoveMode)
 		{
@@ -336,7 +362,7 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	TickCalculateStamina(DeltaTime);
 	TickCameraManagersUpdate(DeltaTime);
 	TraceForWalkChannel();
-	CheckActiveMoveMode();
+	CheckActivateMoveMode(DeltaTime);
 	TickTrick(DeltaTime);
 	TickRun();
 	TickClimb();
@@ -344,15 +370,26 @@ void UAgressiveMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	//Debug
 	if (Debug)
 	{
-		for (FAgressiveMoveModeInput MoveMode : ActiveAgressiveMoveMode)
+		if (DebugActiveMoveMode)
 		{
-			FString LocalString = GetCharacterOwner()->GetName() + " " + UEnum::GetValueAsString(MoveMode.AgressiveMoveMode);
-			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Green, LocalString);
+			for (FAgressiveMoveModeInput LMoveMode : ActiveAgressiveMoveMode)
+			{
+				FString LocalString = GetCharacterOwner()->GetName() + " " + UEnum::GetValueAsString(LMoveMode.AgressiveMoveMode);
+				GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Green, LocalString);
+			}
 		}
-	}
-	if (ExecutedTrick)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Blue, ExecutedTrick->GetName());
+		if (DebugNotActiveMoveMode)
+		{
+			for (FAgressiveMoveModeInput LMoveMode : NotActiveAgressiveMoveMode)
+			{
+				FString LocalString = GetCharacterOwner()->GetName() + " " + UEnum::GetValueAsString(LMoveMode.AgressiveMoveMode);
+				GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Emerald, LocalString);
+			}
+		}
+		if (ExecutedTrick)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Blue, ExecutedTrick->GetName());
+		}
 	}
 }
 void UAgressiveMovementComponent::TrickEnd(UTrickObject* FinisherTrickObject)
@@ -451,18 +488,18 @@ void UAgressiveMovementComponent::StartRunInput()
 {
 	if (GetEnableRun())
 	{
-		AddNotActiveAgressiveModeInput({ EAgressiveMoveMode::Slide,2 });
+		AddNotActiveAgressiveModeInput({ EAgressiveMoveMode::Run,2 });
 	}
 }
 
 void UAgressiveMovementComponent::EndRunInput()
 {
-	RemoveMoveStatusByMode(EAgressiveMoveMode::Run);
+	ForceRemoveMoveStatusAndInputByMode(EAgressiveMoveMode::Run);
 }
 
 void UAgressiveMovementComponent::LowStaminaEndRun()
 {
-	RemoveMoveStatusByMode(EAgressiveMoveMode::Run);
+	RemoveMoveStatusByMode(EAgressiveMoveMode::Run,true,0.5);
 }
 
 UTrickObject* UAgressiveMovementComponent::GetEnableTrick()
@@ -557,7 +594,7 @@ bool UAgressiveMovementComponent::GetEnableSlide()
 void UAgressiveMovementComponent::SetSlideCharacterSize(float Size)
 {
 	SlideCharacterSize = Size;
-	if (ActiveAgressiveMoveMode.Contains(EAgressiveMoveMode::Slide))
+	if (ContainsActiveMoveModeInput(EAgressiveMoveMode::Slide))
 	{
 		GetCharacterOwner()->GetCapsuleComponent()->SetCapsuleSize(GetCharacterOwner()->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), Size);
 	}
@@ -588,12 +625,12 @@ void UAgressiveMovementComponent::StartSlide()
 
 void UAgressiveMovementComponent::EndSlideInput()
 {
-	RemoveMoveStatusByMode(EAgressiveMoveMode::Slide);
+	ForceRemoveMoveStatusAndInputByMode(EAgressiveMoveMode::Slide);
 }
 
 void UAgressiveMovementComponent::TickRun()
 {
-	if (ActiveAgressiveMoveMode.Contains(EAgressiveMoveMode::Run))
+	if (ContainsActiveMoveModeInput(EAgressiveMoveMode::Run))
 	{
 		float DotScale = UKismetMathLibrary::Dot_VectorVector(GetLastInputVector(), GetCharacterOwner()->GetActorForwardVector());
 		if(DotScale<0)
@@ -676,7 +713,7 @@ void UAgressiveMovementComponent::PlayStepTick(float DeltaTime)
 	{
 		if (VelocityToDelayPerStep)
 		{
-			if ((MovementMode != EMovementMode::MOVE_Falling) && (!ActiveAgressiveMoveMode.Contains(EAgressiveMoveMode::Slide)))
+			if ((MovementMode != EMovementMode::MOVE_Falling) && (!ContainsActiveMoveModeInput(EAgressiveMoveMode::Slide)))
 			{
 				TickTimePlayStep = DeltaTime + TickTimePlayStep;
 				float GetTimeToStep = VelocityToDelayPerStep->GetFloatValue(GetCharacterOwner()->GetVelocity().Length());
@@ -684,7 +721,7 @@ void UAgressiveMovementComponent::PlayStepTick(float DeltaTime)
 				{
 					if (PlayCameraShakes)
 					{
-						if (ActiveAgressiveMoveMode.Contains(EAgressiveMoveMode::Run))
+						if (ContainsActiveMoveModeInput(EAgressiveMoveMode::Run))
 						{
 							if (RunCameraShake)
 							{
@@ -705,7 +742,7 @@ void UAgressiveMovementComponent::PlayStepTick(float DeltaTime)
 						FName LocalAttachPointName = FName("None");
 						FVector LocalLocation = GetCharacterOwner()->GetCapsuleComponent()->GetComponentLocation() - (0, 0, GetCharacterOwner()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * -0.4);
 
-						if (ActiveAgressiveMoveMode.Contains(EAgressiveMoveMode::Run))
+						if (ContainsActiveMoveModeInput(EAgressiveMoveMode::Run))
 						{
 							USoundBase* LocalSound = SoundRunStep;
 							if (LocalSound)
@@ -1085,7 +1122,7 @@ void UAgressiveMovementComponent::StartRunOnWall()
 
 void UAgressiveMovementComponent::EndRunOnWallInput()
 {
-	RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
+	ForceRemoveMoveStatusAndInputByMode(EAgressiveMoveMode::RunOnWall);
 };
 
 void UAgressiveMovementComponent::EndRunOnWall()
@@ -1167,7 +1204,7 @@ void UAgressiveMovementComponent::StartClimbInput()
 
 void UAgressiveMovementComponent::EndClimbInput()
 {
-	RemoveMoveStatusByMode(EAgressiveMoveMode::Climb);
+	ForceRemoveMoveStatusAndInputByMode(EAgressiveMoveMode::Climb);
 }
 
 

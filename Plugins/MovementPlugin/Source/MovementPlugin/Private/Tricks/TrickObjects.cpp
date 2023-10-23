@@ -47,7 +47,7 @@ void UTrickObject::EndReloadTimer()
 
 bool UClimbTrickObject::CheckTrickEnable_Implementation()
 {
-	if (MovementComponent->AgressiveMoveMode.Contains(EAgressiveMoveMode::Climb))
+	if (MovementComponent->ContainsActiveMoveModeInput(EAgressiveMoveMode::Climb))
 	{
 		return true;
 	}
@@ -121,7 +121,7 @@ void UClimbingTopEndTrickObject::UseTrick_Implementation()
 
 bool UClimbingUpTrickObject::CheckTrickEnable_Implementation()
 {
-	return MovementComponent->AgressiveMoveMode.Contains(EAgressiveMoveMode::Climb);
+	return MovementComponent->ContainsActiveMoveModeInput(EAgressiveMoveMode::Climb);
 }
 
 void UClimbingUpTrickObject::UseTrick_Implementation()

@@ -106,11 +106,22 @@ struct FAgressiveMoveModeInput
 {
 	GENERATED_BODY()
 
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadWrite)
 	EAgressiveMoveMode AgressiveMoveMode;
 
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadWrite)
 	int Priority = 0;
+
+	UPROPERTY(BlueprintReadWrite)
+	float DefaultReloadTime = 0.2;
+
+	UPROPERTY(BlueprintReadOnly)
+	float Time = 0.2;
+
+	void InitializeTimeAsDefaultTime()
+	{
+		Time = DefaultReloadTime;
+	}
 };
 
 UCLASS()
@@ -127,6 +138,12 @@ public:
 	UPROPERTY(BlueprintReadWrite,EditAnywhere)
 	bool Debug = true;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool DebugNotActiveMoveMode = true;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool DebugActiveMoveMode = true;
+
 	UPROPERTY(BlueprintReadOnly)
 	TArray<FAgressiveMoveModeInput> ActiveAgressiveMoveMode = {};
 
@@ -134,16 +151,17 @@ public:
 	TArray<FAgressiveMoveModeInput> NotActiveAgressiveMoveMode = {};
 
 	UFUNCTION(BlueprintCallable)
-	void CheckActiveMoveMode();
+	void CheckActivateMoveMode(float DeltaTime);
 
 	UFUNCTION(BlueprintCallable)
-	void AddNotActiveAgressiveModeInput(FAgressiveMoveModeInput NewAgressiveMoveModeInput);
+	void AddNotActiveAgressiveModeInput(FAgressiveMoveModeInput NewAgressiveMoveModeInput, float DirectTimeToActive = -1.0);
 
 	UFUNCTION(BlueprintCallable)
 	void RemoveActiveAgressiveModeInputByMode(EAgressiveMoveMode RemoveMoveMode);
 
 	UFUNCTION(BlueprintCallable)
 	void RemoveNotActiveAgressiveModeInputByMode(EAgressiveMoveMode RemoveMoveMode);
+
 
 	UFUNCTION(BlueprintCallable)
 	FAgressiveMoveModeInput FindActiveMoveModeInput(EAgressiveMoveMode MoveMode, bool &Sucsess);
@@ -206,10 +224,13 @@ public:
 	void AddMoveStatus(FAgressiveMoveModeInput NewAgressiveMoveModeInput);
 
 	UFUNCTION(BlueprintCallable)
-	void RemoveMoveStatusByMode(EAgressiveMoveMode RemoveAgressiveMoveMode, bool SendToInput = true);
+	void RemoveMoveStatusByMode(EAgressiveMoveMode RemoveAgressiveMoveMode, bool SendToInput = true, float DirectReloadTime = -1.0);
 
 	UFUNCTION(BlueprintCallable)
-	void RemoveMoveStatusByInput(FAgressiveMoveModeInput RemoveAgressiveMoveModeInput, bool SendToInput = true);
+	void RemoveMoveStatusByInput(FAgressiveMoveModeInput RemoveAgressiveMoveModeInput, bool SendToInput = true, float DirectReloadTime = -1.0);
+
+	UFUNCTION(BlueprintCallable)
+	void ForceRemoveMoveStatusAndInputByMode(EAgressiveMoveMode RemoveAgressiveMoveMode);
 
 protected:
 	virtual void SwitchRemoveModeStatus(EAgressiveMoveMode RemoveAgressiveMoveMode);
