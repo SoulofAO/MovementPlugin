@@ -102,7 +102,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FEndStamina);
 
 
 USTRUCT(Blueprintable)
-struct FAgressiveMoveModeByPriority
+struct FAgressiveMoveModeInput
 {
 	GENERATED_BODY()
 
@@ -128,20 +128,34 @@ public:
 	bool Debug = true;
 
 	UPROPERTY(BlueprintReadOnly)
-	TArray<EAgressiveMoveMode> AgressiveMoveMode = {};
+	TArray<FAgressiveMoveModeInput> ActiveAgressiveMoveMode = {};
 
 	UPROPERTY(BlueprintReadOnly)
-	TArray<FAgressiveMoveModeByPriority> NotActiveAgressiveMoveMode = {};
+	TArray<FAgressiveMoveModeInput> NotActiveAgressiveMoveMode = {};
 
 	UFUNCTION(BlueprintCallable)
 	void CheckActiveMoveMode();
 
 	UFUNCTION(BlueprintCallable)
-	void AddNewAgressiveModeInput(EAgressiveMoveMode MoveMode, int Priority = 0);
+	void AddNotActiveAgressiveModeInput(FAgressiveMoveModeInput NewAgressiveMoveModeInput);
 
 	UFUNCTION(BlueprintCallable)
-	void RemoveAgressiveModeInput(EAgressiveMoveMode RemoveMoveMode);
+	void RemoveActiveAgressiveModeInputByMode(EAgressiveMoveMode RemoveMoveMode);
+
+	UFUNCTION(BlueprintCallable)
+	void RemoveNotActiveAgressiveModeInputByMode(EAgressiveMoveMode RemoveMoveMode);
+
+	UFUNCTION(BlueprintCallable)
+	FAgressiveMoveModeInput FindActiveMoveModeInput(EAgressiveMoveMode MoveMode, bool &Sucsess);
+
+	UFUNCTION(BlueprintCallable)
+	FAgressiveMoveModeInput FindNotActiveMoveModeInput(EAgressiveMoveMode MoveMode, bool& Sucsess);
 	
+	UFUNCTION(BlueprintCallable)
+	bool ContainsActiveMoveModeInput(EAgressiveMoveMode MoveMode);
+
+	UFUNCTION(BlueprintCallable)
+	bool ContainsNotActiveMoveModeInput(EAgressiveMoveMode MoveMode);
 
 	UPROPERTY(BlueprintReadWrite,EditAnywhere)
 	float Stamina = 100;
@@ -189,11 +203,18 @@ public:
 	virtual void BeginDestroy() override;
 
 	UFUNCTION(BlueprintCallable)
-	void AddMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode);
+	void AddMoveStatus(FAgressiveMoveModeInput NewAgressiveMoveModeInput);
 
 	UFUNCTION(BlueprintCallable)
-	void RemoveMoveStatus(EAgressiveMoveMode NewAgressiveMoveMode, bool SendToInput = true);
+	void RemoveMoveStatusByMode(EAgressiveMoveMode RemoveAgressiveMoveMode, bool SendToInput = true);
 
+	UFUNCTION(BlueprintCallable)
+	void RemoveMoveStatusByInput(FAgressiveMoveModeInput RemoveAgressiveMoveModeInput, bool SendToInput = true);
+
+protected:
+	virtual void SwitchRemoveModeStatus(EAgressiveMoveMode RemoveAgressiveMoveMode);
+
+public:
 	UFUNCTION(BlueprintCallable)
 	void RemoveAllMoveStatus(bool SendToInput = true);
 	//End Core
