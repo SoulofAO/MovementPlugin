@@ -642,7 +642,7 @@ void UAgressiveMovementComponent::TickRun()
 		else
 		{
 			DotScale = DotScale + 1;
-			RunStaminaModificator->SelfValue = LowStaminaRunValue * DotScale;
+			RunStaminaModificator->SelfValue = LowStaminaRunValue * DotScale * GetLastInputVector().Length()/sqrt(3);
 			RunAccelerationModification->SelfValue = AccelerationRunMultiply * DotScale;
 			RunMaxSpeedModification->SelfValue = SpeedRunMultiply * DotScale;
 		}
@@ -1220,7 +1220,7 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 		MoveOnWallEvent();
 	}
 	FVector VelocityInCSystem = Velocity / 100;
-	FVector AirFrenselVelocity = VelocityInCSystem.Length() * VelocityInCSystem.Length() * AirFrenselCoifficient*-1 * 100 * Velocity.GetSafeNormal();
+	FVector AirFrenselVelocity = VelocityInCSystem.Length() * VelocityInCSystem.Length() * AirCableFrenselCoifficient*-1 * 100 * Velocity.GetSafeNormal();
 	if (Debug)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Blue, AirFrenselVelocity.ToString());

@@ -682,7 +682,7 @@ public:
 	virtual void PhysWalking(float deltaTime, int32 Iterations);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float AirFrenselCoifficient = 0.5;
+	float AirCableFrenselCoifficient = 0.01;
 
 	//HelperFunction
 };
