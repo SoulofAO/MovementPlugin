@@ -144,6 +144,9 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool DebugActiveMoveMode = true;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool DebugRunOnWall = true;
+
 	UPROPERTY(BlueprintReadOnly)
 	TArray<FAgressiveMoveModeInput> ActiveAgressiveMoveMode = {};
 
@@ -556,7 +559,10 @@ public:
 	float MinDotAngleToRunOnWall = -0.1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float SpeedRunOnWall = 300;
+	float BaseSpeedRunOnWall = 300;
+
+	UPROPERTY(BlueprintReadOnly)
+	float StartSpeedRunOnWall = 1000;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float DefaultPowerToRunOnWall = 1.0;
@@ -608,8 +614,6 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void TickSlideOnWall(float DeltaTime);
 
-	UFUNCTION(BlueprintCallable)
-	void EndRunOnWallDirectly();
 
 public:
 	//MoveOnWallEnd
