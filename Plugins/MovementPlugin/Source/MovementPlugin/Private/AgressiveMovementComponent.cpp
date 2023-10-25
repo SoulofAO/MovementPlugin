@@ -35,7 +35,7 @@ void UAgressiveMovementComponent::CheckActivateMoveMode(float DeltaTime)
 			switch (LocalAgressiveMoveMode->AgressiveMoveMode)
 			{
 			case EAgressiveMoveMode::Run:
-				if ((MovementMode == EMovementMode::MOVE_Walking) && !ContainsActiveMoveModeInput(EAgressiveMoveMode::Slide))
+				if (CheckRun(true))
 				{
 					AddMoveStatus(*LocalAgressiveMoveMode);
 					count--;
@@ -44,9 +44,7 @@ void UAgressiveMovementComponent::CheckActivateMoveMode(float DeltaTime)
 
 			case EAgressiveMoveMode::Slide:
 			{
-				FVector NormilizeMultiplier = { 1.0,1.0,0 };
-				FVector LocalNormaliaizeVelocity = GetCharacterOwner()->GetVelocity() * NormilizeMultiplier;
-				if ((LocalNormaliaizeVelocity.Length() > MinSpeedForSliding) && MovementMode == EMovementMode::MOVE_Falling)
+				if(CheckSlide(true))
 				{
 					AddMoveStatus(*LocalAgressiveMoveMode);
 					count--;
@@ -55,7 +53,7 @@ void UAgressiveMovementComponent::CheckActivateMoveMode(float DeltaTime)
 			}
 			case EAgressiveMoveMode::RunOnWall:
 			{
-				if ((MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess)
+				if (CheckRunOnWall(true))
 				{
 					AddMoveStatus(*LocalAgressiveMoveMode);
 					count--;
@@ -219,10 +217,6 @@ void UAgressiveMovementComponent::AddMoveStatus(FAgressiveMoveModeInput NewAgres
 			break;
 		case EAgressiveMoveMode::Slide:
 			RemoveMoveStatusByMode(EAgressiveMoveMode::Run);
-			if (ContainsActiveMoveModeInput(EAgressiveMoveMode::RunOnWall))
-			{
-				RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
-			}
 			StartSlide();
 			break;
 		case EAgressiveMoveMode::RunOnWall:
@@ -484,6 +478,18 @@ void UAgressiveMovementComponent::EndRun()
 	RemoveStaminaModificator("Run");
 }
 
+bool UAgressiveMovementComponent::CheckRun(bool ToEnableStatus)
+{
+	if (ToEnableStatus)
+	{
+		return !ContainsActiveMoveModeInput(EAgressiveMoveMode::Slide) && MovementMode == EMovementMode::MOVE_Walking;
+	}
+	else
+	{
+		return false;
+	}
+}
+
 void UAgressiveMovementComponent::StartRunInput()
 {
 	if (GetEnableRun())
@@ -622,6 +628,39 @@ void UAgressiveMovementComponent::StartSlide()
 	MaxAcceleration = AccelerationModificator->ApplyModificators(DefaultMaxAcceleration);
 }
 
+bool UAgressiveMovementComponent::CheckSlide(bool ToEnableStatus)
+{
+	FVector NormilizeMultiplier = { 1.0,1.0,0 };
+	FVector LocalNormaliaizeVelocity = GetCharacterOwner()->GetVelocity() * NormilizeMultiplier;
+	if (ToEnableStatus)
+	{
+		if (ContainsActiveMoveModeInput(EAgressiveMoveMode::RunOnWall) && GetCustomControlVector().Dot({0,0,1}) < 0)
+		{
+			if ((LocalNormaliaizeVelocity.Length() > MinSpeedForSliding) && MovementMode == EMovementMode::MOVE_Falling)
+			{
+				return true;
+			}
+		}
+		else
+		{
+			if ((LocalNormaliaizeVelocity.Length() > MinSpeedForSliding) && MovementMode == EMovementMode::MOVE_Falling && !TraceSphereSucsess)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	else
+	{
+		if ((LocalNormaliaizeVelocity.Length() > MinSpeedForSliding))
+		{
+			return true;
+		}
+		return false;
+	}
+	return false;
+}
+
 
 void UAgressiveMovementComponent::EndSlideInput()
 {
@@ -709,7 +748,7 @@ FVector UAgressiveMovementComponent::GetApplyCruck()
 }
 void UAgressiveMovementComponent::PlayStepTick(float DeltaTime)
 {
-	if (PlaySensorEvents)
+	if (PlaySensorEvents && Cast<APlayerController>(GetCharacterOwner()->GetController()))
 	{
 		if (VelocityToDelayPerStep)
 		{
@@ -725,14 +764,14 @@ void UAgressiveMovementComponent::PlayStepTick(float DeltaTime)
 						{
 							if (RunCameraShake)
 							{
-								UGameplayStatics::GetPlayerController(this, 0)->PlayerCameraManager->StartCameraShake(RunCameraShake);
+								Cast<APlayerController>(GetCharacterOwner()->GetController())->PlayerCameraManager->StartCameraShake(RunCameraShake);
 							}
 						}
 						else
 						{
 							if (WalkCameraShake)
 							{
-								UGameplayStatics::GetPlayerController(this, 0)->PlayerCameraManager->StartCameraShake(WalkCameraShake);
+								Cast<APlayerController>(GetCharacterOwner()->GetController())->PlayerCameraManager->StartCameraShake(WalkCameraShake);
 							}
 						}
 					}
@@ -1077,6 +1116,7 @@ FVector UAgressiveMovementComponent::GetMoveToWallVector()
 	FVector ForwardVector = GetCharacterOwner()->GetActorForwardVector();
 	FRotator Rotator = UKismetMathLibrary::NormalizedDeltaRotator(UKismetMathLibrary::Conv_VectorToRotator(ForwardVector), UKismetMathLibrary::Conv_VectorToRotator(OptimalWall.ImpactNormal));
 	FVector VectorToMove = UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 });
+	GetCustomControlVector().ProjectOnToNormal(OptimalWall.ImpactNormal);
 	FVector AppendVector = UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, VectorToMove).GetAbs()* 0.5;
 	if (Rotator.Yaw < 0)
 	{
@@ -1088,21 +1128,17 @@ FVector UAgressiveMovementComponent::GetMoveToWallVector()
 	}
 }
 
-void UAgressiveMovementComponent::MoveOnWallEvent()
+void UAgressiveMovementComponent::TickRunOnWall(float DeltaTime)
 {
-	CheckVelocityMoveOnWall();
-	if (!TraceSphereSucsess)
-	{
-		RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
-	}
 	if (ContainsActiveMoveModeInput(EAgressiveMoveMode::RunOnWall))
 	{
+		if (!CheckRunOnWall(false))
+		{
+			RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
+			return;
+		}
 		FVector LaunchVector = GetMoveToWallVector() * SpeedRunOnWall;
 		Launch(LaunchVector);
-		if (Debug)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Black, LaunchVector.ToString());
-		}
 	}
 }
 void UAgressiveMovementComponent::StartRunOnWallInput()
@@ -1116,8 +1152,13 @@ void UAgressiveMovementComponent::StartRunOnWallInput()
 void UAgressiveMovementComponent::StartRunOnWall()
 {
 	ReloadDoubleJump();
-	AddStaminaModificator(-10, "RunOnWall");
+	AddStaminaModificator(LowStaminaRunOnWall, "RunOnWall");
 	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRunOnWall);
+}
+
+FVector UAgressiveMovementComponent::GetCustomControlVector_Implementation()
+{
+	return GetCharacterOwner()->GetController()->GetControlRotation().Vector();
 }
 
 void UAgressiveMovementComponent::EndRunOnWallInput()
@@ -1136,12 +1177,47 @@ void UAgressiveMovementComponent::LowStaminaEndRunOnWall()
 	RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
 }
 
-void UAgressiveMovementComponent::CheckVelocityMoveOnWall()
+
+bool UAgressiveMovementComponent::CheckRunOnWall(bool ToEnableStatus)
 {
-	if (GetCharacterOwner()->GetVelocity().Length() < MinMoveOnWallVelocity || GetLastInputVector().Length()==0.0)
+	bool LHaveGoodAngle = false;
+	for (FHitResult HitResult : WallTraceHitResults)
 	{
-		RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
+		if (HitResult.ImpactNormal.Dot({ 0,0,1 }) > 0.7)
+		{
+			LHaveGoodAngle = true;
+		}
 	}
+	if (ToEnableStatus)
+	{
+		return ((MovementMode == EMovementMode::MOVE_Falling) && TraceSphereSucsess && GetCharacterOwner()->GetVelocity().Length() > MinMoveOnWallVelocity && GetLastInputVector().Length() != 0.0 && !LHaveGoodAngle);
+	}
+	else
+	{
+		return (GetCharacterOwner()->GetVelocity().Length() > MinMoveOnWallVelocity || GetLastInputVector().Length() != 0.0 && TraceSphereSucsess && !LHaveGoodAngle);
+		return false;
+	}
+	return false;
+}
+
+void UAgressiveMovementComponent::TickMoveOnWall(float DeltaTime)
+{
+	if (ContainsActiveMoveModeInput(EAgressiveMoveMode::RunOnWall))
+	{
+		if (ContainsActiveMoveModeInput(EAgressiveMoveMode::Slide))
+		{
+			TickSlideOnWall(DeltaTime);
+		}
+		else
+		{
+			TickRunOnWall(DeltaTime);
+		}
+	}
+}
+
+void UAgressiveMovementComponent::TickSlideOnWall(float DeltaTime)
+{
+
 }
 
 void UAgressiveMovementComponent::EndRunOnWallDirectly()
@@ -1215,10 +1291,8 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 
 	CruckFlyTick(deltaTime);
 	MaxWalkSpeed = DefaultMaxWalkSpeed;
-	if (ContainsActiveMoveModeInput(EAgressiveMoveMode::RunOnWall))
-	{
-		MoveOnWallEvent();
-	}
+	TickMoveOnWall(deltaTime);
+
 	FVector VelocityInCSystem = Velocity / 100;
 	FVector AirFrenselVelocity = VelocityInCSystem.Length() * VelocityInCSystem.Length() * AirCableFrenselCoifficient*-1 * 100 * Velocity.GetSafeNormal();
 	if (Debug)
@@ -1233,7 +1307,7 @@ void UAgressiveMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 	Super::PhysWalking(deltaTime, Iterations);
 	CruckWalkingTick(deltaTime);
 
-	if (GetCharacterOwner()->GetVelocity().Length() < MinSpeedForSliding)
+	if (!CheckSlide(false))
 	{
 		RemoveMoveStatusByMode(EAgressiveMoveMode::Slide);
 	};

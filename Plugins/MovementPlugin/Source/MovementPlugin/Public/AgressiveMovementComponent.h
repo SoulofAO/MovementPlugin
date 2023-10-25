@@ -360,6 +360,9 @@ public:
 	UFUNCTION()
 	void EndRun();
 
+	UFUNCTION(BlueprintCallable)
+	bool CheckRun(bool ToEnableStatus);
+
 	UFUNCTION()
 	void LowStaminaEndRun();
 	//EndRunStatus
@@ -397,7 +400,7 @@ public:
 	float GroundBrakingWhenSliding = 200;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float MinSpeedForSliding = 100;
+	float MinSpeedForSliding = 300;
 
 	UPROPERTY(BlueprintReadWrite)
 	float DefaultCharacterSize;
@@ -413,6 +416,9 @@ public:
 
 	UFUNCTION()
 	void StartSlide();
+
+	UFUNCTION()
+	bool CheckSlide(bool ToEnableStatus);
 
 	UFUNCTION(BlueprintCallable)
 	void EndSlideInput();
@@ -552,6 +558,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float SpeedRunOnWall = 300;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float DefaultPowerToRunOnWall = 1.0;
+
+	UPROPERTY(BlueprintReadOnly)
+	float PowerToRunOnWall = 1.0;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UCameraShakeBase* RunOnWalkCameraShake;
 
@@ -559,13 +571,18 @@ public:
 	FVector GetMoveToWallVector();
 
 	UFUNCTION()
-	void MoveOnWallEvent();
+	void TickRunOnWall(float DeltaTime);
 
 	UFUNCTION(BlueprintCallable)
 	void StartRunOnWallInput();
 
 	UFUNCTION()
 	void StartRunOnWall();
+
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	FVector GetCustomControlVector();
+	
+	virtual FVector GetCustomControlVector_Implementation();
 
 	UFUNCTION(BlueprintCallable)
 	void EndRunOnWallInput();
@@ -579,8 +596,17 @@ public:
 	UPROPERTY(BlueprintReadWrite,EditAnywhere)
 	float MinMoveOnWallVelocity = 50;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float LowStaminaRunOnWall = -30;
+
 	UFUNCTION(BlueprintCallable)
-	void CheckVelocityMoveOnWall();
+	bool CheckRunOnWall(bool ToEnableStatus);
+
+	UFUNCTION(BlueprintCallable)
+	void TickMoveOnWall(float DeltaTime);
+
+	UFUNCTION(BlueprintCallable)
+	void TickSlideOnWall(float DeltaTime);
 
 	UFUNCTION(BlueprintCallable)
 	void EndRunOnWallDirectly();
