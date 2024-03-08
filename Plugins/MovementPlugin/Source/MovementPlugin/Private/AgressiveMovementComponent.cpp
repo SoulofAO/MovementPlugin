@@ -932,7 +932,6 @@ FVector UAgressiveMovementComponent::GetJumpFromWallVector()
 }
 void UAgressiveMovementComponent::JumpFromWall()
 {
-	RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall,true, 0.5);
 	if (CanTakeStamina(TakenJumpFromWallStamina))
 	{
 		if (!ReloadJumpTimeHandle.IsValid())
@@ -1117,14 +1116,15 @@ FVector UAgressiveMovementComponent::GetMoveToWallVector()
 	FVector ForwardVector = GetCharacterOwner()->GetActorForwardVector();
 	FRotator Rotator = UKismetMathLibrary::NormalizedDeltaRotator(UKismetMathLibrary::Conv_VectorToRotator(ForwardVector), UKismetMathLibrary::Conv_VectorToRotator(OptimalWall.ImpactNormal));
 	FVector VectorToMove = UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, { 0,0,1 });
-	FVector AppendVector = GetCustomControlVector().ProjectOnToNormal(OptimalWall.ImpactNormal);
+	GetCustomControlVector().ProjectOnToNormal(OptimalWall.ImpactNormal);
+	FVector AppendVector = UKismetMathLibrary::Cross_VectorVector(OptimalWall.ImpactNormal, VectorToMove).GetAbs()* 0.5;
 	if (Rotator.Yaw < 0)
 	{
-		return UKismetMathLibrary::Normal(VectorToMove + AppendVector);
+		return VectorToMove + AppendVector;
 	}
 	else
 	{
-		return UKismetMathLibrary::Normal(VectorToMove*-1 + AppendVector);
+		return VectorToMove*-1 + AppendVector;
 	}
 }
 
@@ -1137,15 +1137,7 @@ void UAgressiveMovementComponent::TickRunOnWall(float DeltaTime)
 			RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
 			return;
 		}
-		FVector LaunchVector = GetMoveToWallVector();
-		LaunchVector.Normalize();
-		PowerToRunOnWall = PowerToRunOnWall - LaunchVector.Dot({ 0,0,1 }) * DeltaTime;
-		if (DebugRunOnWall)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Black, "Power =" + FString::SanitizeFloat(PowerToRunOnWall));
-		}
-		float LSpeedLaunch = UKismetMathLibrary::Lerp(BaseSpeedRunOnWall, StartSpeedRunOnWall, PowerToRunOnWall / DefaultPowerToRunOnWall);
-		LaunchVector  = LaunchVector * LSpeedLaunch;
+		FVector LaunchVector = GetMoveToWallVector() * SpeedRunOnWall;
 		Launch(LaunchVector);
 	}
 }
@@ -1161,8 +1153,6 @@ void UAgressiveMovementComponent::StartRunOnWall()
 {
 	ReloadDoubleJump();
 	AddStaminaModificator(LowStaminaRunOnWall, "RunOnWall");
-	StartSpeedRunOnWall = GetCharacterOwner()->GetVelocity().Length();
-	PowerToRunOnWall = DefaultPowerToRunOnWall;
 	EndStaminaDelegate.AddDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRunOnWall);
 }
 
@@ -1178,7 +1168,6 @@ void UAgressiveMovementComponent::EndRunOnWallInput()
 
 void UAgressiveMovementComponent::EndRunOnWall()
 {
-	PowerToRunOnWall = DefaultPowerToRunOnWall;
 	EndStaminaDelegate.RemoveDynamic(this, &UAgressiveMovementComponent::LowStaminaEndRunOnWall);
 	RemoveStaminaModificator("RunOnWall");
 }
@@ -1205,7 +1194,7 @@ bool UAgressiveMovementComponent::CheckRunOnWall(bool ToEnableStatus)
 	}
 	else
 	{
-		return (GetCharacterOwner()->GetVelocity().Length() > MinMoveOnWallVelocity || GetLastInputVector().Length() != 0.0 && TraceSphereSucsess && !LHaveGoodAngle &&(PowerToRunOnWall>0.0));
+		return (GetCharacterOwner()->GetVelocity().Length() > MinMoveOnWallVelocity || GetLastInputVector().Length() != 0.0 && TraceSphereSucsess && !LHaveGoodAngle);
 		return false;
 	}
 	return false;
@@ -1228,22 +1217,17 @@ void UAgressiveMovementComponent::TickMoveOnWall(float DeltaTime)
 
 void UAgressiveMovementComponent::TickSlideOnWall(float DeltaTime)
 {
-	if (ContainsActiveMoveModeInput(EAgressiveMoveMode::RunOnWall))
+
+}
+
+void UAgressiveMovementComponent::EndRunOnWallDirectly()
+{
+	if (Debug)
 	{
-		if (!CheckRunOnWall(false))
-		{
-			RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
-			return;
-		}
-		FVector LaunchVector = GetMoveToWallVector();
-		LaunchVector.Normalize();
-		if (DebugRunOnWall)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Black, "Power =" + FString::SanitizeFloat(PowerToRunOnWall));
-		}
-		LaunchVector = LaunchVector * 700;
-		Launch(LaunchVector);
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Black, "TimerWallEnd");
 	}
+	JumpFromWall();
+	RemoveMoveStatusByMode(EAgressiveMoveMode::RunOnWall);
 }
 
 void UAgressiveMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
@@ -1311,6 +1295,10 @@ void UAgressiveMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 
 	FVector VelocityInCSystem = Velocity / 100;
 	FVector AirFrenselVelocity = VelocityInCSystem.Length() * VelocityInCSystem.Length() * AirCableFrenselCoifficient*-1 * 100 * Velocity.GetSafeNormal();
+	if (Debug)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 0.0, FColor::Blue, AirFrenselVelocity.ToString());
+	}
 	AddForce(AirFrenselVelocity*Mass);
 }
 
